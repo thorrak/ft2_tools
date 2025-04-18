@@ -182,22 +182,60 @@ install_dependencies() {
 check_python_version() {
   local required_version=$1
   local current_version
+  local quiet=${2:-false}
   
   # Check if Python is installed
   if ! command -v python3 &> /dev/null; then
-    printerror "Python 3 is not installed or not in PATH."
+    if [ "$quiet" != "true" ]; then
+      printerror "Python 3 is not installed or not in PATH."
+    fi
     return 1
   fi
   
   # Get the current Python version
   current_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')
   
-  # Compare versions
-  if python3 -c "import sys; from packaging import version; sys.exit(0 if version.parse('$current_version') >= version.parse('$required_version') else 1)" 2>/dev/null; then
-    printinfo "Python version $current_version is compatible (required: $required_version)."
+  # Manual version comparison (avoid dependency on external modules)
+  local IFS='.'
+  read -ra CURR_PARTS <<< "$current_version"
+  read -ra REQ_PARTS <<< "$required_version"
+  
+  # Compare major version
+  if [ "${CURR_PARTS[0]}" -gt "${REQ_PARTS[0]}" ]; then
+    if [ "$quiet" != "true" ]; then
+      printinfo "Python version $current_version is compatible (required: $required_version)."
+    fi
+    return 0
+  elif [ "${CURR_PARTS[0]}" -lt "${REQ_PARTS[0]}" ]; then
+    if [ "$quiet" != "true" ]; then
+      printerror "Python version $current_version is not compatible (required: $required_version or newer)."
+    fi
+    return 1
+  fi
+  
+  # Compare minor version
+  if [ "${CURR_PARTS[1]}" -gt "${REQ_PARTS[1]}" ]; then
+    if [ "$quiet" != "true" ]; then
+      printinfo "Python version $current_version is compatible (required: $required_version)."
+    fi
+    return 0
+  elif [ "${CURR_PARTS[1]}" -lt "${REQ_PARTS[1]}" ]; then
+    if [ "$quiet" != "true" ]; then
+      printerror "Python version $current_version is not compatible (required: $required_version or newer)."
+    fi
+    return 1
+  fi
+  
+  # Compare patch version
+  if [ "${CURR_PARTS[2]}" -ge "${REQ_PARTS[2]}" ]; then
+    if [ "$quiet" != "true" ]; then
+      printinfo "Python version $current_version is compatible (required: $required_version)."
+    fi
     return 0
   else
-    printerror "Python version $current_version is not compatible (required: $required_version or newer)."
+    if [ "$quiet" != "true" ]; then
+      printerror "Python version $current_version is not compatible (required: $required_version or newer)."
+    fi
     return 1
   fi
 }
@@ -208,22 +246,9 @@ install_serial_to_fermentrack() {
   
   # Check if Python is installed and version is compatible
   if ! check_python_version "$SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION"; then
-    # Try to install the packaging module if the version check failed due to missing module
-    if ! python3 -c "import packaging.version" 2>/dev/null; then
-      printinfo "Installing Python packaging module for version comparison..."
-      python3 -m pip install --user packaging >> "${INSTALL_LOG}" 2>&1
-      
-      # Check version again
-      if ! check_python_version "$SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION"; then
-        printerror "Python is either not installed or its version is too old."
-        printerror "Serial to Fermentrack requires Python $SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION or newer."
-        return 1
-      fi
-    else
-      printerror "Python is either not installed or its version is too old."
-      printerror "Serial to Fermentrack requires Python $SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION or newer."
-      return 1
-    fi
+    printerror "Python is either not installed or its version is too old."
+    printerror "Serial to Fermentrack requires Python $SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION or newer."
+    return 1
   fi
   
   # Create a temporary directory for download
@@ -268,10 +293,16 @@ install_brewflasher() {
   mkdir -p ~/fermentrack_tools/brewflasher >> "${INSTALL_LOG}" 2>&1
   
   # Clone the repository
-  git clone https://github.com/thorrak/brewflasher-cli.git ~/fermentrack_tools/brewflasher/app >> "${INSTALL_LOG}" 2>&1 || die "Failed to clone BrewFlasher repository"
+  git clone https://github.com/thorrak/brewflasher-cli.git ~/fermentrack_tools/brewflasher/app >> "${INSTALL_LOG}" 2>&1 || {
+    printerror "Failed to clone BrewFlasher repository"
+    return 1
+  }
   
   # Install Python dependencies
-  cd ~/fermentrack_tools/brewflasher/app && pip3 install -r requirements.txt >> "${INSTALL_LOG}" 2>&1 || die "Failed to install BrewFlasher dependencies"
+  cd ~/fermentrack_tools/brewflasher/app && pip3 install -r requirements.txt >> "${INSTALL_LOG}" 2>&1 || {
+    printerror "Failed to install BrewFlasher dependencies"
+    return 1
+  }
   
   # Create starter script
   cat > ~/fermentrack_tools/brewflasher/run.sh << 'EOF'
@@ -284,6 +315,7 @@ EOF
   
   printinfo "BrewFlasher Command Line Edition installed successfully"
   printinfo "Run with: ~/fermentrack_tools/brewflasher/run.sh"
+  return 0
 }
 
 # Install Docker for TiltBridge Junior
@@ -292,6 +324,7 @@ install_docker() {
   
   if command -v docker &> /dev/null; then
     printinfo "Docker is already installed. Continuing."
+    return 0
   else
     printinfo "Docker is not installed. Installing..."
     
@@ -301,16 +334,25 @@ install_docker() {
       
       # Install prerequisites
       sudo apt-get update >> "${INSTALL_LOG}" 2>&1
-      sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common >> "${INSTALL_LOG}" 2>&1 || die "Failed to install Docker prerequisites"
+      sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common >> "${INSTALL_LOG}" 2>&1 || {
+        printerror "Failed to install Docker prerequisites"
+        return 1
+      }
       
       # Add Docker's official GPG key
-      curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - >> "${INSTALL_LOG}" 2>&1 || die "Failed to add Docker GPG key"
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - >> "${INSTALL_LOG}" 2>&1 || {
+        printerror "Failed to add Docker GPG key"
+        return 1
+      }
       
       # Add Docker repository (for Ubuntu, but works for Raspbian/Debian in many cases)
       sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" >> "${INSTALL_LOG}" 2>&1 || {
         # If the above fails, try with Raspbian/Debian specific repo
         source /etc/os-release
-        echo "deb [arch=armhf] https://download.docker.com/linux/debian $VERSION_CODENAME stable" | sudo tee /etc/apt/sources.list.d/docker.list >> "${INSTALL_LOG}" 2>&1 || die "Failed to add Docker repository"
+        echo "deb [arch=armhf] https://download.docker.com/linux/debian $VERSION_CODENAME stable" | sudo tee /etc/apt/sources.list.d/docker.list >> "${INSTALL_LOG}" 2>&1 || {
+          printerror "Failed to add Docker repository"
+          return 1
+        }
       }
       
       # Install Docker
@@ -318,7 +360,10 @@ install_docker() {
       sudo apt-get install -y docker-ce docker-ce-cli containerd.io >> "${INSTALL_LOG}" 2>&1 || {
         # If the above fails, try the convenience script from get.docker.com
         curl -fsSL https://get.docker.com -o get-docker.sh >> "${INSTALL_LOG}" 2>&1
-        sudo sh get-docker.sh >> "${INSTALL_LOG}" 2>&1 || die "Failed to install Docker"
+        sudo sh get-docker.sh >> "${INSTALL_LOG}" 2>&1 || {
+          printerror "Failed to install Docker"
+          return 1
+        }
         rm get-docker.sh
       }
       
@@ -327,24 +372,39 @@ install_docker() {
       printinfo "Detected RHEL/CentOS/Fedora system."
       
       # Install prerequisites
-      sudo yum install -y yum-utils >> "${INSTALL_LOG}" 2>&1 || die "Failed to install Docker prerequisites"
+      sudo yum install -y yum-utils >> "${INSTALL_LOG}" 2>&1 || {
+        printerror "Failed to install Docker prerequisites"
+        return 1
+      }
       
       # Add Docker repository
-      sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo >> "${INSTALL_LOG}" 2>&1 || die "Failed to add Docker repository"
+      sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo >> "${INSTALL_LOG}" 2>&1 || {
+        printerror "Failed to add Docker repository"
+        return 1
+      }
       
       # Install Docker
-      sudo yum install -y docker-ce docker-ce-cli containerd.io >> "${INSTALL_LOG}" 2>&1 || die "Failed to install Docker"
+      sudo yum install -y docker-ce docker-ce-cli containerd.io >> "${INSTALL_LOG}" 2>&1 || {
+        printerror "Failed to install Docker"
+        return 1
+      }
       
     elif command -v brew &>/dev/null; then
       # macOS with Homebrew
       printinfo "Detected macOS with Homebrew."
-      brew install --cask docker >> "${INSTALL_LOG}" 2>&1 || die "Failed to install Docker"
+      brew install --cask docker >> "${INSTALL_LOG}" 2>&1 || {
+        printerror "Failed to install Docker"
+        return 1
+      }
       
     else
       # Generic install using get.docker.com
       printinfo "Using generic Docker installation method."
       curl -fsSL https://get.docker.com -o get-docker.sh >> "${INSTALL_LOG}" 2>&1
-      sudo sh get-docker.sh >> "${INSTALL_LOG}" 2>&1 || die "Failed to install Docker"
+      sudo sh get-docker.sh >> "${INSTALL_LOG}" 2>&1 || {
+        printerror "Failed to install Docker"
+        return 1
+      }
       rm get-docker.sh
     fi
   fi
@@ -366,8 +426,10 @@ install_docker() {
   # Verify Docker installation
   if docker --version >> "${INSTALL_LOG}" 2>&1; then
     printinfo "Docker installed successfully!"
+    return 0
   else
     printwarn "Docker installation may have issues. Check the log for details."
+    return 1
   fi
 }
 
@@ -376,16 +438,25 @@ install_tiltbridge_junior() {
   printinfo "Installing TiltBridge Junior..."
   
   # Install Docker first (required for TiltBridge Junior)
-  install_docker
+  install_docker || {
+    printerror "Failed to install Docker, which is required for TiltBridge Junior"
+    return 1
+  }
   
   # Create directory
   mkdir -p ~/fermentrack_tools/tiltbridge_junior >> "${INSTALL_LOG}" 2>&1
   
   # Clone the repository
-  git clone https://github.com/thorrak/tiltbridge_junior.git ~/fermentrack_tools/tiltbridge_junior/app >> "${INSTALL_LOG}" 2>&1 || die "Failed to clone TiltBridge Junior repository"
+  git clone https://github.com/thorrak/tiltbridge_junior.git ~/fermentrack_tools/tiltbridge_junior/app >> "${INSTALL_LOG}" 2>&1 || {
+    printerror "Failed to clone TiltBridge Junior repository"
+    return 1
+  }
   
   # Install Python dependencies
-  cd ~/fermentrack_tools/tiltbridge_junior/app && pip3 install -r requirements.txt >> "${INSTALL_LOG}" 2>&1 || die "Failed to install TiltBridge Junior dependencies"
+  cd ~/fermentrack_tools/tiltbridge_junior/app && pip3 install -r requirements.txt >> "${INSTALL_LOG}" 2>&1 || {
+    printerror "Failed to install TiltBridge Junior dependencies"
+    return 1
+  }
   
   # Create starter script
   cat > ~/fermentrack_tools/tiltbridge_junior/run.sh << 'EOF'
@@ -398,6 +469,7 @@ EOF
   
   printinfo "TiltBridge Junior installed successfully"
   printinfo "Run with: ~/fermentrack_tools/tiltbridge_junior/run.sh"
+  return 0
 }
 
 # Interactive selection menu
@@ -456,24 +528,41 @@ get_user_selections() {
   fi
 }
 
+# Keep track of installation results
+SERIAL_INSTALLED=false
+BREWFLASHER_INSTALLED=false
+TILTBRIDGE_INSTALLED=false
+
 # Installation summary
 installation_summary() {
   echo
   printinfo "Installation summary:"
   echo
   if [[ ${INSTALL_SERIAL} -eq 1 ]]; then
-    echo " - Serial to Fermentrack: Installed"
-    echo "   Run with: ~/fermentrack_tools/serial_to_fermentrack/run.sh"
+    if [[ ${SERIAL_INSTALLED} == true ]]; then
+      echo " - Serial to Fermentrack: Installed"
+      echo "   Run with: serial_to_fermentrack_config"
+    else
+      echo " - Serial to Fermentrack: Installation FAILED"
+    fi
   fi
   
   if [[ ${INSTALL_BREWFLASHER} -eq 1 ]]; then
-    echo " - BrewFlasher Command Line Edition: Installed"
-    echo "   Run with: ~/fermentrack_tools/brewflasher/run.sh"
+    if [[ ${BREWFLASHER_INSTALLED} == true ]]; then
+      echo " - BrewFlasher Command Line Edition: Installed"
+      echo "   Run with: ~/fermentrack_tools/brewflasher/run.sh"
+    else
+      echo " - BrewFlasher Command Line Edition: Installation FAILED"
+    fi
   fi
   
   if [[ ${INSTALL_TILTBRIDGE} -eq 1 ]]; then
-    echo " - TiltBridge Junior: Installed"
-    echo "   Run with: ~/fermentrack_tools/tiltbridge_junior/run.sh"
+    if [[ ${TILTBRIDGE_INSTALLED} == true ]]; then
+      echo " - TiltBridge Junior: Installed"
+      echo "   Run with: ~/fermentrack_tools/tiltbridge_junior/run.sh"
+    else
+      echo " - TiltBridge Junior: Installation FAILED"
+    fi
   fi
   
   echo
@@ -493,15 +582,27 @@ main() {
   install_dependencies
   
   if [[ ${INSTALL_SERIAL} -eq 1 ]]; then
-    install_serial_to_fermentrack || printwarn "Serial to Fermentrack installation failed."
+    if install_serial_to_fermentrack; then
+      SERIAL_INSTALLED=true
+    else
+      printwarn "Serial to Fermentrack installation failed."
+    fi
   fi
   
   if [[ ${INSTALL_BREWFLASHER} -eq 1 ]]; then
-    install_brewflasher
+    if install_brewflasher; then
+      BREWFLASHER_INSTALLED=true
+    else
+      printwarn "BrewFlasher installation failed."
+    fi
   fi
   
   if [[ ${INSTALL_TILTBRIDGE} -eq 1 ]]; then
-    install_tiltbridge_junior
+    if install_tiltbridge_junior; then
+      TILTBRIDGE_INSTALLED=true
+    else
+      printwarn "TiltBridge Junior installation failed."
+    fi
   fi
   
   installation_summary
