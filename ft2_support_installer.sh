@@ -180,11 +180,11 @@ install_dependencies() {
   if ! command -v uv &> /dev/null; then
     printinfo "uv not found, installing..."
     curl -LsSf https://astral.sh/uv/install.sh | sh >> "${INSTALL_LOG}" 2>&1 || {
-      printwarn "Failed to install uv. Installation will continue without it."
+      die "Failed to install uv. Installation will not continue without it."
     }
     # Reload PATH to include uv if it was just installed
-    if [ -f "$HOME/.cargo/env" ]; then
-      . "$HOME/.cargo/env"
+    if [ -f "$HOME/.local/bin/env" ]; then
+      . "$HOME/.local/bin/env"
     fi
     # Report installation status
     if command -v uv &> /dev/null; then
@@ -272,8 +272,8 @@ install_serial_to_fermentrack() {
   
   # Check if uv is installed
   if ! command -v uv &> /dev/null; then
-    printwarn "uv is not installed. Falling back to standard pip installation."
-    local use_uv=false
+    printerror "uv is not installed. Installation cannot continue."
+    return 1
   else
     local use_uv=true
   fi
@@ -302,13 +302,11 @@ install_serial_to_fermentrack() {
     fi
   fi
   
-  # If uv failed or isn't available, try with standard venv
+  # If uv failed, return error - we require uv
   if [ "$use_uv" = false ]; then
-    if ! python3 -m venv "${venv_dir}" >> "${INSTALL_LOG}" 2>&1; then
-      printerror "Failed to create Python virtual environment."
-      rm -rf "$tmp_dir"
-      return 1
-    fi
+    printerror "Failed to create virtualenv with uv. Installation cannot continue."
+    rm -rf "$tmp_dir"
+    return 1
   fi
   
   # Install the wheel file
@@ -317,22 +315,11 @@ install_serial_to_fermentrack() {
   if [ "$use_uv" = true ]; then
     # Install using uv
     if ! uv pip install --python "${venv_dir}/bin/python" "$tmp_dir/serial_to_fermentrack.whl" >> "${INSTALL_LOG}" 2>&1; then
-      printwarn "Failed to install with uv. Falling back to standard pip."
-      use_uv=false
-    else
-      printinfo "Serial to Fermentrack installed successfully with uv."
-    fi
-  fi
-  
-  # If uv installation failed or uv isn't available, try with standard pip
-  if [ "$use_uv" = false ]; then
-    # Source the virtualenv and install with pip
-    if ! (source "${venv_dir}/bin/activate" && pip install "$tmp_dir/serial_to_fermentrack.whl" >> "${INSTALL_LOG}" 2>&1); then
-      printerror "Failed to install Serial to Fermentrack wheel file."
+      printerror "Failed to install with uv. Installation cannot continue."
       rm -rf "$tmp_dir"
       return 1
     else
-      printinfo "Serial to Fermentrack installed successfully with pip."
+      printinfo "Serial to Fermentrack installed successfully with uv."
     fi
   fi
   
