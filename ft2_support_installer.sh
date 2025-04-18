@@ -163,16 +163,19 @@ install_dependencies() {
   if [ -f /etc/debian_version ]; then
     # Debian/Ubuntu based systems
     sudo apt-get update >> "${INSTALL_LOG}" 2>&1
-    sudo apt-get install -y python3 python3-pip git >> "${INSTALL_LOG}" 2>&1 || die "Failed to install dependencies"
+    sudo apt-get install -y python3 python3-pip git supervisor >> "${INSTALL_LOG}" 2>&1 || die "Failed to install dependencies"
   elif [ -f /etc/redhat-release ]; then
     # RHEL/CentOS/Fedora
     sudo yum -y install python3 python3-pip git >> "${INSTALL_LOG}" 2>&1 || die "Failed to install dependencies"
+    # For RHEL/CentOS/Fedora, supervisor needs to be installed via pip
+    sudo pip3 install supervisor >> "${INSTALL_LOG}" 2>&1 || printwarn "Failed to install supervisor"
   elif command -v brew &>/dev/null; then
     # macOS with Homebrew
     brew install python3 git >> "${INSTALL_LOG}" 2>&1 || die "Failed to install dependencies"
+    pip3 install supervisor >> "${INSTALL_LOG}" 2>&1 || printwarn "Failed to install supervisor"
   else
     printwarn "Unsupported system, trying to proceed anyway"
-    printwarn "You may need to manually install Python 3, pip, and git"
+    printwarn "You may need to manually install Python 3, pip, git, and supervisor"
   fi
   
   # Check if uv is installed, and install it if not
@@ -348,7 +351,92 @@ serial_to_fermentrack_config "\$@"
 EOF
 
   chmod +x "${myPath}/serial_to_fermentrack_config"
-  
+
+  # Daemon wrapper script
+  cat > "${myPath}/serial_to_fermentrack_daemon" << EOF
+#!/bin/bash
+# Wrapper script for Serial to Fermentrack Daemon
+SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+source "\${SCRIPT_DIR}/venv/bin/activate"
+serial_to_fermentrack_daemon "\$@"
+EOF
+
+  chmod +x "${myPath}/serial_to_fermentrack_daemon"
+
+  # Create logs directory
+  mkdir -p "${myPath}/logs"
+
+  # Ask user if they want to run the daemon automatically
+  if [[ ${INTERACTIVE} -eq 1 ]]; then
+    echo
+    read -p "Do you want serial_to_fermentrack to run automatically at startup? [Y/n]: " AUTO_START_CHOICE
+    case "${AUTO_START_CHOICE}" in
+      n | N | no | NO | No )
+        AUTO_START=0
+        ;;
+      * )
+        AUTO_START=1
+        ;;
+    esac
+  else
+    # Default to yes in non-interactive mode
+    AUTO_START=1
+  fi
+
+  # Set up supervisor configuration if requested
+  if [[ ${AUTO_START} -eq 1 ]]; then
+    printinfo "Setting up supervisor configuration..."
+    
+    # Get current username
+    CURRENT_USER=$(whoami)
+    
+    # Create supervisor config file
+    SUPERVISOR_CONFIG_DIR="/etc/supervisor/conf.d"
+    if [ ! -d "$SUPERVISOR_CONFIG_DIR" ]; then
+      # Try alternative location for supervisor config
+      SUPERVISOR_CONFIG_DIR="/etc/supervisord.d"
+      if [ ! -d "$SUPERVISOR_CONFIG_DIR" ]; then
+        # Create directory if it doesn't exist
+        sudo mkdir -p "$SUPERVISOR_CONFIG_DIR"
+      fi
+    fi
+    
+    # Create the supervisor configuration file
+    cat > "${myPath}/serial_to_fermentrack.conf" << EOF
+[program:serial_to_fermentrack]
+command=${myPath}/venv/bin/python -m serial_to_fermentrack_daemon
+directory=${myPath}
+user=${CURRENT_USER}
+autostart=true
+autorestart=true
+startsecs=5
+startretries=3
+stderr_logfile=${myPath}/logs/serial_to_fermentrack_error.log
+stdout_logfile=${myPath}/logs/serial_to_fermentrack_stdout.log
+EOF
+
+    # Install the supervisor config
+    sudo cp "${myPath}/serial_to_fermentrack.conf" "$SUPERVISOR_CONFIG_DIR/"
+    
+    # Reload supervisor configuration
+    if command -v supervisorctl &> /dev/null; then
+      printinfo "Reloading supervisor configuration..."
+      sudo supervisorctl reread
+      sudo supervisorctl update
+      sudo supervisorctl start serial_to_fermentrack
+      
+      # Check if service started successfully
+      if sudo supervisorctl status serial_to_fermentrack | grep -q "RUNNING"; then
+        printinfo "Serial to Fermentrack daemon is now running under supervisor!"
+      else
+        printwarn "Failed to start Serial to Fermentrack daemon. You can try starting it manually with 'sudo supervisorctl start serial_to_fermentrack'"
+      fi
+    else
+      printwarn "supervisorctl command not found. Please reload supervisor manually."
+      printinfo "A supervisor configuration file has been created at: $SUPERVISOR_CONFIG_DIR/serial_to_fermentrack.conf"
+    fi
+  fi
+
   # Clean up
   rm -rf "$tmp_dir"
   
@@ -359,6 +447,17 @@ EOF
   echo
   echo "To run Serial to Fermentrack, run '${myPath}/serial_to_fermentrack'"
   echo
+  echo "To activate the virtual environment directly, run '${myPath}/activate.sh'"
+  echo
+  
+  if [[ ${AUTO_START} -eq 1 ]]; then
+    echo "Serial to Fermentrack daemon is configured to start automatically using supervisor."
+    echo "Logs are available at: ${myPath}/logs/"
+    echo
+  else
+    echo "To run the daemon manually, use '${myPath}/serial_to_fermentrack_daemon'"
+    echo
+  fi
   
   return 0
 }
