@@ -21,6 +21,10 @@ INSTALL_BREWFLASHER=0
 INSTALL_TILTBRIDGE=0
 INSTALL_LOG="./install.log"
 
+# URLs for installation packages
+SERIAL_TO_FERMENTRACK_WHEEL_URL="https://github.com/thorrak/serial_to_fermentrack/releases/download/v0.0.1-alpha1/serial_to_fermentrack-0.0.1-py3-none-any.whl"
+SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION="3.8.0"
+
 # Help text
 function usage() {
     echo "Usage: $0 [-h] [-n] [-s] [-b] [-t]" 1>&2
@@ -174,52 +178,86 @@ install_dependencies() {
   printinfo "Dependencies installed successfully"
 }
 
+# Check Python version
+check_python_version() {
+  local required_version=$1
+  local current_version
+  
+  # Check if Python is installed
+  if ! command -v python3 &> /dev/null; then
+    printerror "Python 3 is not installed or not in PATH."
+    return 1
+  fi
+  
+  # Get the current Python version
+  current_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')
+  
+  # Compare versions
+  if python3 -c "import sys; from packaging import version; sys.exit(0 if version.parse('$current_version') >= version.parse('$required_version') else 1)" 2>/dev/null; then
+    printinfo "Python version $current_version is compatible (required: $required_version)."
+    return 0
+  else
+    printerror "Python version $current_version is not compatible (required: $required_version or newer)."
+    return 1
+  fi
+}
+
 # Serial to Fermentrack installation
 install_serial_to_fermentrack() {
   printinfo "Installing Serial to Fermentrack..."
   
-  # Create directory
-  mkdir -p ~/fermentrack_tools/serial_to_fermentrack >> "${INSTALL_LOG}" 2>&1
-  
-  # Clone the repository (using the correct repository)
-  git clone https://github.com/thorrak/brewpi_serial_rest.git ~/fermentrack_tools/serial_to_fermentrack/app >> "${INSTALL_LOG}" 2>&1 || die "Failed to clone Serial to Fermentrack repository"
-  
-  # Navigate to the app directory
-  cd ~/fermentrack_tools/serial_to_fermentrack/app || die "Failed to change to app directory"
-  
-  # Install uv if not already installed
-  if ! command -v uv &> /dev/null; then
-    printinfo "Installing uv package manager..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh >> "${INSTALL_LOG}" 2>&1 || {
-      # If that fails, try pip
-      printinfo "Falling back to pip installation of uv..."
-      pip3 install uv >> "${INSTALL_LOG}" 2>&1 || die "Failed to install uv package manager"
-    }
-    
-    # Make sure ~/.cargo/bin is in the PATH
-    export PATH="$HOME/.cargo/bin:$PATH"
+  # Check if Python is installed and version is compatible
+  if ! check_python_version "$SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION"; then
+    # Try to install the packaging module if the version check failed due to missing module
+    if ! python3 -c "import packaging.version" 2>/dev/null; then
+      printinfo "Installing Python packaging module for version comparison..."
+      python3 -m pip install --user packaging >> "${INSTALL_LOG}" 2>&1
+      
+      # Check version again
+      if ! check_python_version "$SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION"; then
+        printerror "Python is either not installed or its version is too old."
+        printerror "Serial to Fermentrack requires Python $SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION or newer."
+        return 1
+      fi
+    else
+      printerror "Python is either not installed or its version is too old."
+      printerror "Serial to Fermentrack requires Python $SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION or newer."
+      return 1
+    fi
   fi
   
-  # Set up virtual environment with uv
-  printinfo "Setting up Python virtual environment with uv..."
-  uv venv >> "${INSTALL_LOG}" 2>&1 || die "Failed to create virtual environment"
+  # Create a temporary directory for download
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+  printinfo "Downloading Serial to Fermentrack wheel file..."
   
-  # Install dependencies with uv
-  printinfo "Installing dependencies with uv..."
-  uv pip install -r requirements.txt >> "${INSTALL_LOG}" 2>&1 || die "Failed to install dependencies with uv"
+  # Download the wheel file
+  if ! curl -L -o "$tmp_dir/serial_to_fermentrack.whl" "$SERIAL_TO_FERMENTRACK_WHEEL_URL" >> "${INSTALL_LOG}" 2>&1; then
+    printerror "Failed to download Serial to Fermentrack wheel file."
+    rm -rf "$tmp_dir"
+    return 1
+  fi
   
-  # Create starter script that activates the virtual environment
-  cat > ~/fermentrack_tools/serial_to_fermentrack/run.sh << 'EOF'
-#!/bin/bash
-cd "$(dirname "$0")/app"
-source .venv/bin/activate
-python -m brewpi_serial_rest "$@"
-EOF
-  
-  chmod +x ~/fermentrack_tools/serial_to_fermentrack/run.sh
-  
-  printinfo "Serial to Fermentrack installed successfully"
-  printinfo "Run with: ~/fermentrack_tools/serial_to_fermentrack/run.sh"
+  # Install the wheel file
+  printinfo "Installing Serial to Fermentrack wheel file..."
+  if python3 -m pip install --user "$tmp_dir/serial_to_fermentrack.whl" >> "${INSTALL_LOG}" 2>&1; then
+    printinfo "Serial to Fermentrack installed successfully."
+    
+    # Clean up
+    rm -rf "$tmp_dir"
+    
+    echo
+    echo "Serial to Fermentrack is now installed, but still requires configuration."
+    echo
+    echo "To configure Serial to Fermentrack, run 'serial_to_fermentrack_config'."
+    echo
+    
+    return 0
+  else
+    printerror "Failed to install Serial to Fermentrack wheel file."
+    rm -rf "$tmp_dir"
+    return 1
+  fi
 }
 
 # BrewFlasher Command Line Edition installation
@@ -455,7 +493,7 @@ main() {
   install_dependencies
   
   if [[ ${INSTALL_SERIAL} -eq 1 ]]; then
-    install_serial_to_fermentrack
+    install_serial_to_fermentrack || printwarn "Serial to Fermentrack installation failed."
   fi
   
   if [[ ${INSTALL_BREWFLASHER} -eq 1 ]]; then
