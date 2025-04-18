@@ -270,6 +270,14 @@ install_serial_to_fermentrack() {
     return 1
   fi
   
+  # Check if uv is installed
+  if ! command -v uv &> /dev/null; then
+    printwarn "uv is not installed. Falling back to standard pip installation."
+    local use_uv=false
+  else
+    local use_uv=true
+  fi
+  
   # Create a temporary directory for download
   local tmp_dir
   tmp_dir=$(mktemp -d)
@@ -282,26 +290,89 @@ install_serial_to_fermentrack() {
     return 1
   fi
   
-  # Install the wheel file
-  printinfo "Installing Serial to Fermentrack wheel file..."
-  if python3 -m pip install --user "$tmp_dir/serial_to_fermentrack.whl" >> "${INSTALL_LOG}" 2>&1; then
-    printinfo "Serial to Fermentrack installed successfully."
-    
-    # Clean up
-    rm -rf "$tmp_dir"
-    
-    echo
-    echo "Serial to Fermentrack is now installed, but still requires configuration."
-    echo
-    echo "To configure Serial to Fermentrack, run 'serial_to_fermentrack_config'."
-    echo
-    
-    return 0
-  else
-    printerror "Failed to install Serial to Fermentrack wheel file."
-    rm -rf "$tmp_dir"
-    return 1
+  # Create a virtualenv in the script's directory
+  local venv_dir="${myPath}/venv"
+  printinfo "Creating virtual environment in ${venv_dir}..."
+  
+  if [ "$use_uv" = true ]; then
+    # Create virtualenv using uv
+    if ! uv venv --allow-existing "${venv_dir}" >> "${INSTALL_LOG}" 2>&1; then
+      printwarn "Failed to create virtualenv with uv. Falling back to standard venv."
+      use_uv=false
+    fi
   fi
+  
+  # If uv failed or isn't available, try with standard venv
+  if [ "$use_uv" = false ]; then
+    if ! python3 -m venv "${venv_dir}" >> "${INSTALL_LOG}" 2>&1; then
+      printerror "Failed to create Python virtual environment."
+      rm -rf "$tmp_dir"
+      return 1
+    fi
+  fi
+  
+  # Install the wheel file
+  printinfo "Installing Serial to Fermentrack wheel file into virtualenv..."
+  
+  if [ "$use_uv" = true ]; then
+    # Install using uv
+    if ! uv pip install --python "${venv_dir}/bin/python" "$tmp_dir/serial_to_fermentrack.whl" >> "${INSTALL_LOG}" 2>&1; then
+      printwarn "Failed to install with uv. Falling back to standard pip."
+      use_uv=false
+    else
+      printinfo "Serial to Fermentrack installed successfully with uv."
+    fi
+  fi
+  
+  # If uv installation failed or uv isn't available, try with standard pip
+  if [ "$use_uv" = false ]; then
+    # Source the virtualenv and install with pip
+    if ! (source "${venv_dir}/bin/activate" && pip install "$tmp_dir/serial_to_fermentrack.whl" >> "${INSTALL_LOG}" 2>&1); then
+      printerror "Failed to install Serial to Fermentrack wheel file."
+      rm -rf "$tmp_dir"
+      return 1
+    else
+      printinfo "Serial to Fermentrack installed successfully with pip."
+    fi
+  fi
+  
+  # Create wrapper scripts for easy execution
+  printinfo "Creating wrapper scripts..."
+  
+  # Main wrapper script
+  cat > "${myPath}/serial_to_fermentrack" << EOF
+#!/bin/bash
+# Wrapper script for Serial to Fermentrack
+SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+source "\${SCRIPT_DIR}/venv/bin/activate"
+serial_to_fermentrack "\$@"
+EOF
+
+  chmod +x "${myPath}/serial_to_fermentrack"
+  
+  # Configuration wrapper script
+  cat > "${myPath}/serial_to_fermentrack_config" << EOF
+#!/bin/bash
+# Wrapper script for Serial to Fermentrack Config
+SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+source "\${SCRIPT_DIR}/venv/bin/activate"
+serial_to_fermentrack_config "\$@"
+EOF
+
+  chmod +x "${myPath}/serial_to_fermentrack_config"
+  
+  # Clean up
+  rm -rf "$tmp_dir"
+  
+  echo
+  echo "Serial to Fermentrack is now installed, but still requires configuration."
+  echo
+  echo "To configure Serial to Fermentrack, run '${myPath}/serial_to_fermentrack_config'"
+  echo
+  echo "To run Serial to Fermentrack, run '${myPath}/serial_to_fermentrack'"
+  echo
+  
+  return 0
 }
 
 # BrewFlasher Command Line Edition installation
