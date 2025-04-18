@@ -283,8 +283,9 @@ install_serial_to_fermentrack() {
   tmp_dir=$(mktemp -d)
   printinfo "Downloading Serial to Fermentrack wheel file..."
   
-  # Download the wheel file
-  if ! curl -L -o "$tmp_dir/serial_to_fermentrack.whl" "$SERIAL_TO_FERMENTRACK_WHEEL_URL" >> "${INSTALL_LOG}" 2>&1; then
+  # Download the wheel file - extract the filename from the URL
+  local wheel_filename=$(basename "$SERIAL_TO_FERMENTRACK_WHEEL_URL")
+  if ! curl -L -o "$tmp_dir/$wheel_filename" "$SERIAL_TO_FERMENTRACK_WHEEL_URL" >> "${INSTALL_LOG}" 2>&1; then
     printerror "Failed to download Serial to Fermentrack wheel file."
     rm -rf "$tmp_dir"
     return 1
@@ -314,7 +315,7 @@ install_serial_to_fermentrack() {
   
   if [ "$use_uv" = true ]; then
     # Install using uv
-    if ! uv pip install --python "${venv_dir}/bin/python" "$tmp_dir/serial_to_fermentrack.whl" >> "${INSTALL_LOG}" 2>&1; then
+    if ! uv pip install --python "${venv_dir}/bin/python" "$tmp_dir/$wheel_filename" >> "${INSTALL_LOG}" 2>&1; then
       printerror "Failed to install with uv. Installation cannot continue."
       rm -rf "$tmp_dir"
       return 1
