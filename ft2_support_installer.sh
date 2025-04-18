@@ -175,6 +175,25 @@ install_dependencies() {
     printwarn "You may need to manually install Python 3, pip, and git"
   fi
   
+  # Check if uv is installed, and install it if not
+  printinfo "Checking if uv is installed..."
+  if ! command -v uv &> /dev/null; then
+    printinfo "uv not found, installing..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh >> "${INSTALL_LOG}" 2>&1 || {
+      printwarn "Failed to install uv. Installation will continue without it."
+    }
+    # Reload PATH to include uv if it was just installed
+    if [ -f "$HOME/.cargo/env" ]; then
+      . "$HOME/.cargo/env"
+    fi
+    # Report installation status
+    if command -v uv &> /dev/null; then
+      printinfo "uv installed successfully"
+    fi
+  else
+    printinfo "uv is already installed"
+  fi
+  
   printinfo "Dependencies installed successfully"
 }
 
@@ -572,11 +591,57 @@ installation_summary() {
   printinfo "Happy Brewing!"
 }
 
+# Check for updates to the repository
+check_for_updates() {
+  printinfo "Checking for script updates..."
+  
+  # Check if we're in a git repository
+  if ! git rev-parse --is-inside-work-tree &> /dev/null; then
+    printwarn "Not running from a git repository, skipping update check."
+    return 0
+  fi
+  
+  # Store the current branch
+  local current_branch
+  current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
+  
+  # Fetch the latest changes without merging
+  if ! git fetch origin "${current_branch}" &> /dev/null; then
+    printwarn "Failed to fetch updates, continuing with current version."
+    return 0
+  fi
+  
+  # Check if there are changes to pull
+  local changes
+  changes=$(git log HEAD..origin/"${current_branch}" --oneline 2>/dev/null)
+  
+  if [ -n "${changes}" ]; then
+    printinfo "Updates are available. The script will now update itself."
+    
+    # Show the available changes
+    echo "The following updates will be applied:"
+    git log --oneline HEAD..origin/"${current_branch}" | sed 's/^/  /'
+    echo
+    
+    # Pull the changes
+    if git pull origin "${current_branch}" &> /dev/null; then
+      printinfo "The script has been updated successfully."
+      printinfo "Please restart the installer to use the updated version."
+      exit 0
+    else
+      printwarn "Failed to update the script. Continuing with current version."
+    fi
+  else
+    printinfo "No updates available. Continuing with current version."
+  fi
+}
+
 # Main execution flow
 main() {
   printinfo "Starting ${PACKAGE_NAME}..."
   
   verifyInternetConnection
+  check_for_updates
   verifyFreeDiskSpace
   get_user_selections
   install_dependencies
