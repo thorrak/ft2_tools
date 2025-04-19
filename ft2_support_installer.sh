@@ -412,7 +412,11 @@ autorestart=true
 startsecs=5
 startretries=3
 stderr_logfile=${myPath}/logs/serial_to_fermentrack_error.log
+stderr_logfile_maxbytes=2MB
+stderr_logfile_backups=5
 stdout_logfile=${myPath}/logs/serial_to_fermentrack_stdout.log
+stdout_logfile_maxbytes=2MB
+stdout_logfile_backups=5
 environment=VIRTUAL_ENV="${myPath}/venv",PATH="${myPath}/venv/bin:%(ENV_PATH)s",PYTHONUNBUFFERED="1"
 EOF
 
@@ -446,11 +450,7 @@ EOF
   echo
   echo "To configure Serial to Fermentrack, run '${myPath}/serial_to_fermentrack_config'"
   echo
-  echo "To run Serial to Fermentrack, run '${myPath}/serial_to_fermentrack'"
-  echo
-  echo "To activate the virtual environment directly, run '${myPath}/activate.sh'"
-  echo
-  
+
   if [[ ${AUTO_START} -eq 1 ]]; then
     echo "Serial to Fermentrack daemon is configured to start automatically using supervisor."
     echo "Logs are available at: ${myPath}/logs/"
