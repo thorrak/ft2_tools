@@ -413,6 +413,7 @@ startsecs=5
 startretries=3
 stderr_logfile=${myPath}/logs/serial_to_fermentrack_error.log
 stdout_logfile=${myPath}/logs/serial_to_fermentrack_stdout.log
+environment=VIRTUAL_ENV="${myPath}/venv",PATH="${myPath}/venv/bin:%(ENV_PATH)s",PYTHONUNBUFFERED="1"
 EOF
 
     # Install the supervisor config
