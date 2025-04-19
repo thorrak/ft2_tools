@@ -23,7 +23,7 @@ INSTALL_LOG="./install.log"
 
 # URLs for installation packages
 SERIAL_TO_FERMENTRACK_WHEEL_URL="https://github.com/thorrak/serial_to_fermentrack/releases/download/v0.0.1-alpha1/serial_to_fermentrack-0.0.1-py3-none-any.whl"
-SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION="3.8.0"
+MIN_PYTHON_VERSION="3.8.0"
 
 # Help text
 function usage() {
@@ -262,25 +262,41 @@ check_python_version() {
   fi
 }
 
+create_uv_venv() {
+  # Check if Python is installed and version is compatible
+  if ! check_python_version "$MIN_PYTHON_VERSION"; then
+    printerror "Python is either not installed or its version is too old."
+    printerror "Serial to Fermentrack requires Python $MIN_PYTHON_VERSION or newer."
+    return 1
+  fi
+
+  # Check if uv is installed
+  if ! command -v uv &> /dev/null; then
+    printerror "uv is not installed. Installation cannot continue."
+    printinfo "uv should be installed by this script automatically, but manual instructions can be found at:"
+    printinfo "    https://github.com/astral-sh/uv"
+    return 1
+  fi
+
+  # Create a virtualenv in the script's directory
+  local venv_dir="${myPath}/venv"
+  printinfo "Creating virtual environment in ${venv_dir}..."
+
+  # Create virtualenv using uv
+  if ! uv venv --allow-existing "${venv_dir}" >> "${INSTALL_LOG}" 2>&1; then
+    # If uv failed, return error - we require uv
+    printerror "Failed to create virtualenv with uv. Installation cannot continue."
+    return 1
+  fi
+
+}
+
 # Serial to Fermentrack installation
 install_serial_to_fermentrack() {
   printinfo "Installing Serial to Fermentrack..."
   
-  # Check if Python is installed and version is compatible
-  if ! check_python_version "$SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION"; then
-    printerror "Python is either not installed or its version is too old."
-    printerror "Serial to Fermentrack requires Python $SERIAL_TO_FERMENTRACK_MIN_PYTHON_VERSION or newer."
-    return 1
-  fi
-  
-  # Check if uv is installed
-  if ! command -v uv &> /dev/null; then
-    printerror "uv is not installed. Installation cannot continue."
-    return 1
-  else
-    local use_uv=true
-  fi
-  
+  create_uv_venv
+
   # Create a temporary directory for download
   local tmp_dir
   tmp_dir=$(mktemp -d)
@@ -293,40 +309,19 @@ install_serial_to_fermentrack() {
     rm -rf "$tmp_dir"
     return 1
   fi
-  
-  # Create a virtualenv in the script's directory
-  local venv_dir="${myPath}/venv"
-  printinfo "Creating virtual environment in ${venv_dir}..."
-  
-  if [ "$use_uv" = true ]; then
-    # Create virtualenv using uv
-    if ! uv venv --allow-existing "${venv_dir}" >> "${INSTALL_LOG}" 2>&1; then
-      printwarn "Failed to create virtualenv with uv. Falling back to standard venv."
-      use_uv=false
-    fi
-  fi
-  
-  # If uv failed, return error - we require uv
-  if [ "$use_uv" = false ]; then
-    printerror "Failed to create virtualenv with uv. Installation cannot continue."
-    rm -rf "$tmp_dir"
-    return 1
-  fi
-  
+
   # Install the wheel file
   printinfo "Installing Serial to Fermentrack wheel file into virtualenv..."
   
-  if [ "$use_uv" = true ]; then
-    # Install using uv
-    if ! uv pip install --python "${venv_dir}/bin/python" "$tmp_dir/$wheel_filename" >> "${INSTALL_LOG}" 2>&1; then
-      printerror "Failed to install with uv. Installation cannot continue."
-      rm -rf "$tmp_dir"
-      return 1
-    else
-      printinfo "Serial to Fermentrack installed successfully with uv."
-    fi
+  # Install using uv
+  if ! uv pip install --python "${venv_dir}/bin/python" "$tmp_dir/$wheel_filename" >> "${INSTALL_LOG}" 2>&1; then
+    printerror "Failed to install with uv. Installation cannot continue."
+    rm -rf "$tmp_dir"
+    return 1
+  else
+    printinfo "Serial to Fermentrack installed successfully with uv."
   fi
-  
+
   # Create wrapper scripts for easy execution
   printinfo "Creating wrapper scripts..."
   
@@ -447,7 +442,6 @@ EOF
   
   echo
   echo "Serial to Fermentrack is now installed, but still requires configuration."
-  echo
   echo "To configure Serial to Fermentrack, run '${myPath}/serial_to_fermentrack_config'"
   echo
 
@@ -744,10 +738,7 @@ installation_summary() {
   fi
   
   echo
-  printinfo "Installation Complete!"
-  echo "Thank you for using the FT2 Support Installer."
-  echo
-  printinfo "Happy Brewing!"
+  printinfo "Installation Complete. Happy Brewing!"
 }
 
 # Check for updates to the repository
