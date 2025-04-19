@@ -460,33 +460,55 @@ EOF
 # BrewFlasher Command Line Edition installation
 install_brewflasher() {
   printinfo "Installing BrewFlasher Command Line Edition..."
-  
-  # Create directory
-  mkdir -p ~/fermentrack_tools/brewflasher >> "${INSTALL_LOG}" 2>&1
-  
-  # Clone the repository
-  git clone https://github.com/thorrak/brewflasher-cli.git ~/fermentrack_tools/brewflasher/app >> "${INSTALL_LOG}" 2>&1 || {
-    printerror "Failed to clone BrewFlasher repository"
+
+  create_uv_venv
+
+  # Install brewflasher_cli from pypi into the virtualenv
+  if ! uv pip install --upgrade brewflasher_cli >> "${INSTALL_LOG}" 2>&1; then
+    # If uv failed, return error - we require uv
+    printerror "Failed to install BrewFlasher CLI from PyPi. Installation cannot continue."
     return 1
-  }
-  
-  # Install Python dependencies
-  cd ~/fermentrack_tools/brewflasher/app && pip3 install -r requirements.txt >> "${INSTALL_LOG}" 2>&1 || {
-    printerror "Failed to install BrewFlasher dependencies"
-    return 1
-  }
-  
-  # Create starter script
-  cat > ~/fermentrack_tools/brewflasher/run.sh << 'EOF'
+  fi
+
+  # BrewFlasher CLI wrapper script
+  cat > "${myPath}/brewflasher" << EOF
 #!/bin/bash
-cd "$(dirname "$0")/app"
-python3 brewflasher.py "$@"
+# Wrapper script for BrewFlasher CLI
+SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+source "\${SCRIPT_DIR}/venv/bin/activate"
+brewflasher "\$@"
 EOF
-  
-  chmod +x ~/fermentrack_tools/brewflasher/run.sh
-  
-  printinfo "BrewFlasher Command Line Edition installed successfully"
-  printinfo "Run with: ~/fermentrack_tools/brewflasher/run.sh"
+
+  chmod +x "${myPath}/brewflasher"
+
+
+  # Ask user if they want to run the daemon automatically
+  if [[ ${INTERACTIVE} -eq 1 ]]; then
+    echo
+    read -p "Do you want to install 'avrdude' to support flashing Arduinos? [Y/n]: " AVRDUDE_CHOICE
+    case "${AVRDUDE_CHOICE}" in
+      n | N | no | NO | No )
+        INSTALL_AVRDUDE=0
+        ;;
+      * )
+        INSTALL_AVRDUDE=1
+        ;;
+    esac
+  else
+    # Default to yes in non-interactive mode
+    INSTALL_AVRDUDE=1
+  fi
+
+  # Set up supervisor configuration if requested
+  if [[ ${INSTALL_AVRDUDE} -eq 1 ]]; then
+    printinfo "Installing avrdude from apt..."
+    sudo apt-get install -y avrdude >> "${INSTALL_LOG}" 2>&1 || printwarn "Failed to install avrdude - Arduino flashing may not work"
+  fi
+
+  echo
+  echo "BrewFlasher Command Line Edition installed successfully"
+  echo "To use, run '${myPath}/brewflasher'"
+
   return 0
 }
 
@@ -722,7 +744,7 @@ installation_summary() {
   if [[ ${INSTALL_BREWFLASHER} -eq 1 ]]; then
     if [[ ${BREWFLASHER_INSTALLED} == true ]]; then
       echo " - BrewFlasher Command Line Edition: Installed"
-      echo "   Run with: ~/fermentrack_tools/brewflasher/run.sh"
+      echo "   Run with: brewflasher"
     else
       echo " - BrewFlasher Command Line Edition: Installation FAILED"
     fi
