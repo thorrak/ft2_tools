@@ -27,15 +27,15 @@ The installer supports installing these tools:
 Run this command to download and execute the installer automatically, over the internet:
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/thorrak/ft2_support_installer/refs/heads/main/bootstrap.sh)
+bash <(curl -sSL https://raw.githubusercontent.com/thorrak/ft2_tools/refs/heads/main/bootstrap.sh)
 ```
 
 ### Manual Install
 
 If you've already downloaded this repository:
 
-1. Make the installer executable (if it isn't already): `chmod +x ft2_support_installer.sh`
-2. Run the installer: `./ft2_support_installer.sh`
+1. Make the installer executable (if it isn't already): `chmod +x ft2_tools_installer.sh`
+2. Run the installer: `./ft2_tools_installer.sh`
 
 
 ## Using the Tools
@@ -68,7 +68,7 @@ Instructions to come at a later date, when Fermentrack 2 gravity support is avai
 ## Repository Structure
 
 - `bootstrap.sh`: Script designed to be run directly from the internet to download this repository and run the installer
-- `ft2_support_installer.sh`: Main installation script that installs all support applications
+- `ft2_tools_installer.sh`: Main installation script that installs all local tools
 
 ### Created Executables
 
