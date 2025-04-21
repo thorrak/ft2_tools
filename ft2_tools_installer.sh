@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# FT2 Support Installer
+# FT2 Local Tools Installer
 # This script installs support applications for Fermentrack 2:
 # - Serial to Fermentrack
 # - BrewFlasher Command Line Edition
@@ -14,7 +14,7 @@ reset=$(tput sgr0)
 myPath="$( cd "$( dirname "${BASH_SOURCE[0]}")" && pwd )"
 
 # Default settings
-PACKAGE_NAME="FT2 Support Installer"
+PACKAGE_NAME="FT2 Local Tools Installer"
 INTERACTIVE=1
 INSTALL_SERIAL=0
 INSTALL_BREWFLASHER=0
@@ -174,7 +174,7 @@ install_dependencies() {
     brew install python3 git >> "${INSTALL_LOG}" 2>&1 || die "Failed to install dependencies"
     pip3 install supervisor >> "${INSTALL_LOG}" 2>&1 || printwarn "Failed to install supervisor"
   else
-    printwarn "Unsupported system, trying to proceed anyway"
+    printwarn "Uned system, trying to proceed anyway"
     printwarn "You may need to manually install Python 3, pip, git, and supervisor"
   fi
   
@@ -485,7 +485,7 @@ EOF
   # Ask user if they want to run the daemon automatically
   if [[ ${INTERACTIVE} -eq 1 ]]; then
     echo
-    read -p "Do you want to install 'avrdude' to support flashing Arduinos? [Y/n]: " AVRDUDE_CHOICE
+    read -p "Do you want to install 'avrdude' to  flashing Arduinos? [Y/n]: " AVRDUDE_CHOICE
     case "${AVRDUDE_CHOICE}" in
       n | N | no | NO | No )
         INSTALL_AVRDUDE=0
@@ -672,8 +672,8 @@ get_user_selections() {
     # No command line options were provided, ask user for selections
     if [[ ${INSTALL_SERIAL} -eq 0 && ${INSTALL_BREWFLASHER} -eq 0 && ${INSTALL_TILTBRIDGE} -eq 0 ]]; then
       echo
-      printinfo "Welcome to the FT2 Support Installer!"
-      printinfo "This installer will help you set up support applications for Fermentrack 2."
+      printinfo "Welcome to the FT2  Installer!"
+      printinfo "This installer will help you set up  applications for Fermentrack 2."
       echo
       
       read -p "Install Serial to Fermentrack? [y/N]: " SERIAL_CHOICE
