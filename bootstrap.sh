@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 
-# FT2 Support Installer - Bootstrap Script
-# This script is designed to be run directly from the internet to start the installation process
-# Example: curl -L https://raw.githubusercontent.com/thorrak/ft2_support_installer/main/install.sh | bash
+# FT2 Local Tools Installer - Bootstrap Script
+# This script is designed to be run from within a cloned copy of this repo to support the tool installation process
 
 # Colors for terminal output
 green=$(tput setaf 76)
@@ -11,8 +10,8 @@ tan=$(tput setaf 3)
 reset=$(tput sgr0)
 
 # Repository URL
-REPO_URL="https://github.com/thorrak/ft2_support_installer.git"
-REPO_NAME="ft2_support_installer"
+REPO_URL="https://github.com/thorrak/ft2_tools.git"
+REPO_NAME="ft2_tools"
 
 # Print functions
 print_info() {
@@ -74,7 +73,7 @@ setup_repo() {
     return 0
   fi
   
-  # Check if repo exists in the ft2_support_installer subdirectory
+  # Check if repo exists in the ft2_tools subdirectory
   if [ -d "${REPO_NAME}/.git" ] && (cd "${REPO_NAME}" && git remote -v | grep -q "${REPO_URL}"); then
     print_info "Repository already exists in ${REPO_NAME} directory. Updating..."
     cd "${REPO_NAME}" || die "Failed to change to ${REPO_NAME} directory"
@@ -91,7 +90,7 @@ setup_repo() {
 
 # Main execution flow
 main() {
-  print_info "Starting FT2 Support Installer bootstrap..."
+  print_info "Starting FT2 Local Tools Installer bootstrap..."
   
   # Install git if needed
   install_git
@@ -100,13 +99,13 @@ main() {
   setup_repo
   
   # Make sure the installer script is executable
-  chmod +x ./ft2_support_installer.sh
+  chmod +x ./ft2_tools_installer.sh
   
-  print_info "Launching FT2 Support Installer..."
-  print_info "====================================="
+  print_info "Launching FT2 Local Tools Installer..."
+  print_info "======================================"
   
   # Launch the main installer script interactively
-  ./ft2_support_installer.sh
+  ./ft2_tools_installer.sh
 }
 
 # Start the installation process
