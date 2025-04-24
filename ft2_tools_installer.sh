@@ -159,7 +159,7 @@ verifyFreeDiskSpace() {
 # Install system dependencies
 install_dependencies() {
   printinfo "Installing required dependencies"
-  
+
   if [ -f /etc/debian_version ]; then
     # Debian/Ubuntu based systems
     sudo apt-get update >> "${INSTALL_LOG}" 2>&1
@@ -174,10 +174,10 @@ install_dependencies() {
     brew install python3 git >> "${INSTALL_LOG}" 2>&1 || die "Failed to install dependencies"
     pip3 install supervisor >> "${INSTALL_LOG}" 2>&1 || printwarn "Failed to install supervisor"
   else
-    printwarn "Uned system, trying to proceed anyway"
+    printwarn "Unsupported system, trying to proceed anyway"
     printwarn "You may need to manually install Python 3, pip, git, and supervisor"
   fi
-  
+
   # Check if uv is installed, and install it if not
   printinfo "Checking if uv is installed..."
   if ! command -v uv &> /dev/null; then
@@ -196,7 +196,7 @@ install_dependencies() {
   else
     printinfo "uv is already installed"
   fi
-  
+
   printinfo "Dependencies installed successfully"
 }
 
@@ -205,7 +205,7 @@ check_python_version() {
   local required_version=$1
   local current_version
   local quiet=${2:-false}
-  
+
   # Check if Python is installed
   if ! command -v python3 &> /dev/null; then
     if [ "$quiet" != "true" ]; then
@@ -213,15 +213,15 @@ check_python_version() {
     fi
     return 1
   fi
-  
+
   # Get the current Python version
   current_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')
-  
+
   # Manual version comparison (avoid dependency on external modules)
   local IFS='.'
   read -ra CURR_PARTS <<< "$current_version"
   read -ra REQ_PARTS <<< "$required_version"
-  
+
   # Compare major version
   if [ "${CURR_PARTS[0]}" -gt "${REQ_PARTS[0]}" ]; then
     if [ "$quiet" != "true" ]; then
@@ -234,7 +234,7 @@ check_python_version() {
     fi
     return 1
   fi
-  
+
   # Compare minor version
   if [ "${CURR_PARTS[1]}" -gt "${REQ_PARTS[1]}" ]; then
     if [ "$quiet" != "true" ]; then
@@ -247,7 +247,7 @@ check_python_version() {
     fi
     return 1
   fi
-  
+
   # Compare patch version
   if [ "${CURR_PARTS[2]}" -ge "${REQ_PARTS[2]}" ]; then
     if [ "$quiet" != "true" ]; then
@@ -279,11 +279,11 @@ create_uv_venv() {
   fi
 
   # Create a virtualenv in the script's directory
-  local venv_dir="${myPath}/venv"
+  local venv_dir="${myPath}/.venv"
   printinfo "Creating virtual environment in ${venv_dir}..."
 
   # Create virtualenv using uv
-  if ! uv venv --allow-existing "${venv_dir}" >> "${INSTALL_LOG}" 2>&1; then
+  if ! uv venv --allow-existing >> "${INSTALL_LOG}" 2>&1; then
     # If uv failed, return error - we require uv
     printerror "Failed to create virtualenv with uv. Installation cannot continue."
     return 1
@@ -294,14 +294,14 @@ create_uv_venv() {
 # Serial to Fermentrack installation
 install_serial_to_fermentrack() {
   printinfo "Installing Serial to Fermentrack..."
-  
+
   create_uv_venv
 
   # Create a temporary directory for download
   local tmp_dir
   tmp_dir=$(mktemp -d)
   printinfo "Downloading Serial to Fermentrack wheel file..."
-  
+
   # Download the wheel file - extract the filename from the URL
   local wheel_filename=$(basename "$SERIAL_TO_FERMENTRACK_WHEEL_URL")
   if ! curl -L -o "$tmp_dir/$wheel_filename" "$SERIAL_TO_FERMENTRACK_WHEEL_URL" >> "${INSTALL_LOG}" 2>&1; then
@@ -312,7 +312,7 @@ install_serial_to_fermentrack() {
 
   # Install the wheel file
   printinfo "Installing Serial to Fermentrack wheel file into virtualenv..."
-  
+
   # Install using uv
   if ! uv pip install --python "${venv_dir}/bin/python" "$tmp_dir/$wheel_filename" >> "${INSTALL_LOG}" 2>&1; then
     printerror "Failed to install with uv. Installation cannot continue."
@@ -324,24 +324,24 @@ install_serial_to_fermentrack() {
 
   # Create wrapper scripts for easy execution
   printinfo "Creating wrapper scripts..."
-  
+
   # Main wrapper script
   cat > "${myPath}/serial_to_fermentrack" << EOF
 #!/bin/bash
 # Wrapper script for Serial to Fermentrack
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-source "\${SCRIPT_DIR}/venv/bin/activate"
+source "\${SCRIPT_DIR}/.venv/bin/activate"
 serial_to_fermentrack "\$@"
 EOF
 
   chmod +x "${myPath}/serial_to_fermentrack"
-  
+
   # Configuration wrapper script
   cat > "${myPath}/serial_to_fermentrack_config" << EOF
 #!/bin/bash
 # Wrapper script for Serial to Fermentrack Config
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-source "\${SCRIPT_DIR}/venv/bin/activate"
+source "\${SCRIPT_DIR}/.venv/bin/activate"
 serial_to_fermentrack_config "\$@"
 EOF
 
@@ -352,7 +352,7 @@ EOF
 #!/bin/bash
 # Wrapper script for Serial to Fermentrack Daemon
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-source "\${SCRIPT_DIR}/venv/bin/activate"
+source "\${SCRIPT_DIR}/.venv/bin/activate"
 serial_to_fermentrack_daemon "\$@"
 EOF
 
@@ -381,10 +381,10 @@ EOF
   # Set up supervisor configuration if requested
   if [[ ${AUTO_START} -eq 1 ]]; then
     printinfo "Setting up supervisor configuration..."
-    
+
     # Get current username
     CURRENT_USER=$(whoami)
-    
+
     # Create supervisor config file
     SUPERVISOR_CONFIG_DIR="/etc/supervisor/conf.d"
     if [ ! -d "$SUPERVISOR_CONFIG_DIR" ]; then
@@ -395,11 +395,11 @@ EOF
         sudo mkdir -p "$SUPERVISOR_CONFIG_DIR"
       fi
     fi
-    
+
     # Create the supervisor configuration file
     cat > "${myPath}/serial_to_fermentrack.conf" << EOF
 [program:serial_to_fermentrack]
-command=${myPath}/venv/bin/python -m serial_to_fermentrack_daemon
+command=${myPath}/.venv/bin/python -m serial_to_fermentrack_daemon
 directory=${myPath}
 user=${CURRENT_USER}
 autostart=true
@@ -412,19 +412,19 @@ stderr_logfile_backups=5
 stdout_logfile=${myPath}/logs/serial_to_fermentrack_stdout.log
 stdout_logfile_maxbytes=2MB
 stdout_logfile_backups=5
-environment=VIRTUAL_ENV="${myPath}/venv",PATH="${myPath}/venv/bin:%(ENV_PATH)s",PYTHONUNBUFFERED="1"
+environment=VIRTUAL_ENV="${myPath}/.venv",PATH="${myPath}/.venv/bin:%(ENV_PATH)s",PYTHONUNBUFFERED="1"
 EOF
 
     # Install the supervisor config
     sudo cp "${myPath}/serial_to_fermentrack.conf" "$SUPERVISOR_CONFIG_DIR/"
-    
+
     # Reload supervisor configuration
     if command -v supervisorctl &> /dev/null; then
       printinfo "Reloading supervisor configuration..."
       sudo supervisorctl reread
       sudo supervisorctl update
       sudo supervisorctl start serial_to_fermentrack
-      
+
       # Check if service started successfully
       if sudo supervisorctl status serial_to_fermentrack | grep -q "RUNNING"; then
         printinfo "Serial to Fermentrack daemon is now running under supervisor!"
@@ -439,7 +439,7 @@ EOF
 
   # Clean up
   rm -rf "$tmp_dir"
-  
+
   echo
   echo "Serial to Fermentrack is now installed, but still requires configuration."
   echo "To configure Serial to Fermentrack, run '${myPath}/serial_to_fermentrack_config'"
@@ -453,7 +453,7 @@ EOF
     echo "To run the daemon manually, use '${myPath}/serial_to_fermentrack_daemon'"
     echo
   fi
-  
+
   return 0
 }
 
@@ -475,7 +475,7 @@ install_brewflasher() {
 #!/bin/bash
 # Wrapper script for BrewFlasher CLI
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-source "\${SCRIPT_DIR}/venv/bin/activate"
+source "\${SCRIPT_DIR}/.venv/bin/activate"
 brewflasher "\$@"
 EOF
 
@@ -515,30 +515,30 @@ EOF
 # Install Docker for TiltBridge Junior
 install_docker() {
   printinfo "Installing Docker for TiltBridge Junior..."
-  
+
   if command -v docker &> /dev/null; then
     printinfo "Docker is already installed. Continuing."
     return 0
   else
     printinfo "Docker is not installed. Installing..."
-    
+
     if [ -f /etc/debian_version ]; then
       # Debian/Ubuntu based system
       printinfo "Detected Debian/Ubuntu based system."
-      
+
       # Install prerequisites
       sudo apt-get update >> "${INSTALL_LOG}" 2>&1
       sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common >> "${INSTALL_LOG}" 2>&1 || {
         printerror "Failed to install Docker prerequisites"
         return 1
       }
-      
+
       # Add Docker's official GPG key
       curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - >> "${INSTALL_LOG}" 2>&1 || {
         printerror "Failed to add Docker GPG key"
         return 1
       }
-      
+
       # Add Docker repository (for Ubuntu, but works for Raspbian/Debian in many cases)
       sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" >> "${INSTALL_LOG}" 2>&1 || {
         # If the above fails, try with Raspbian/Debian specific repo
@@ -548,7 +548,7 @@ install_docker() {
           return 1
         }
       }
-      
+
       # Install Docker
       sudo apt-get update >> "${INSTALL_LOG}" 2>&1
       sudo apt-get install -y docker-ce docker-ce-cli containerd.io >> "${INSTALL_LOG}" 2>&1 || {
@@ -560,29 +560,29 @@ install_docker() {
         }
         rm get-docker.sh
       }
-      
+
     elif [ -f /etc/redhat-release ]; then
       # RHEL/CentOS/Fedora
       printinfo "Detected RHEL/CentOS/Fedora system."
-      
+
       # Install prerequisites
       sudo yum install -y yum-utils >> "${INSTALL_LOG}" 2>&1 || {
         printerror "Failed to install Docker prerequisites"
         return 1
       }
-      
+
       # Add Docker repository
       sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo >> "${INSTALL_LOG}" 2>&1 || {
         printerror "Failed to add Docker repository"
         return 1
       }
-      
+
       # Install Docker
       sudo yum install -y docker-ce docker-ce-cli containerd.io >> "${INSTALL_LOG}" 2>&1 || {
         printerror "Failed to install Docker"
         return 1
       }
-      
+
     elif command -v brew &>/dev/null; then
       # macOS with Homebrew
       printinfo "Detected macOS with Homebrew."
@@ -590,7 +590,7 @@ install_docker() {
         printerror "Failed to install Docker"
         return 1
       }
-      
+
     else
       # Generic install using get.docker.com
       printinfo "Using generic Docker installation method."
@@ -602,21 +602,21 @@ install_docker() {
       rm get-docker.sh
     fi
   fi
-  
+
   # Start and enable Docker service
   if command -v systemctl &>/dev/null; then
     printinfo "Starting and enabling Docker service..."
     sudo systemctl start docker >> "${INSTALL_LOG}" 2>&1
     sudo systemctl enable docker >> "${INSTALL_LOG}" 2>&1
   fi
-  
+
   # Add current user to docker group
   if [ "$USER" != "root" ]; then
     printinfo "Adding user '$USER' to the 'docker' group..."
     sudo usermod -aG docker "$USER" >> "${INSTALL_LOG}" 2>&1
     printinfo "Note: You may need to log out and back in for Docker permissions to take effect."
   fi
-  
+
   # Verify Docker installation
   if docker --version >> "${INSTALL_LOG}" 2>&1; then
     printinfo "Docker installed successfully!"
@@ -630,37 +630,37 @@ install_docker() {
 # TiltBridge Junior installation
 install_tiltbridge_junior() {
   printinfo "Installing TiltBridge Junior..."
-  
+
   # Install Docker first (required for TiltBridge Junior)
   install_docker || {
     printerror "Failed to install Docker, which is required for TiltBridge Junior"
     return 1
   }
-  
+
   # Create directory
   mkdir -p ~/fermentrack_tools/tiltbridge_junior >> "${INSTALL_LOG}" 2>&1
-  
+
   # Clone the repository
   git clone https://github.com/thorrak/tiltbridge_junior.git ~/fermentrack_tools/tiltbridge_junior/app >> "${INSTALL_LOG}" 2>&1 || {
     printerror "Failed to clone TiltBridge Junior repository"
     return 1
   }
-  
+
   # Install Python dependencies
   cd ~/fermentrack_tools/tiltbridge_junior/app && pip3 install -r requirements.txt >> "${INSTALL_LOG}" 2>&1 || {
     printerror "Failed to install TiltBridge Junior dependencies"
     return 1
   }
-  
+
   # Create starter script
   cat > ~/fermentrack_tools/tiltbridge_junior/run.sh << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")/app"
 python3 tiltbridge_junior.py "$@"
 EOF
-  
+
   chmod +x ~/fermentrack_tools/tiltbridge_junior/run.sh
-  
+
   printinfo "TiltBridge Junior installed successfully"
   printinfo "Run with: ~/fermentrack_tools/tiltbridge_junior/run.sh"
   return 0
@@ -675,7 +675,7 @@ get_user_selections() {
       printinfo "Welcome to the FT2  Installer!"
       printinfo "This installer will help you set up  applications for Fermentrack 2."
       echo
-      
+
       read -p "Install Serial to Fermentrack? [y/N]: " SERIAL_CHOICE
       case "${SERIAL_CHOICE}" in
         y | Y | yes | YES | Yes )
@@ -685,7 +685,7 @@ get_user_selections() {
           INSTALL_SERIAL=0
           ;;
       esac
-      
+
       read -p "Install BrewFlasher Command Line Edition? [y/N]: " BREWFLASHER_CHOICE
       case "${BREWFLASHER_CHOICE}" in
         y | Y | yes | YES | Yes )
@@ -695,7 +695,7 @@ get_user_selections() {
           INSTALL_BREWFLASHER=0
           ;;
       esac
-      
+
       read -p "Install TiltBridge Junior? [y/N]: " TILTBRIDGE_CHOICE
       case "${TILTBRIDGE_CHOICE}" in
         y | Y | yes | YES | Yes )
@@ -705,7 +705,7 @@ get_user_selections() {
           INSTALL_TILTBRIDGE=0
           ;;
       esac
-      
+
       # Check if at least one application was selected
       if [[ ${INSTALL_SERIAL} -eq 0 && ${INSTALL_BREWFLASHER} -eq 0 && ${INSTALL_TILTBRIDGE} -eq 0 ]]; then
         printwarn "No applications selected for installation. Exiting."
@@ -740,7 +740,7 @@ installation_summary() {
       echo " - Serial to Fermentrack: Installation FAILED"
     fi
   fi
-  
+
   if [[ ${INSTALL_BREWFLASHER} -eq 1 ]]; then
     if [[ ${BREWFLASHER_INSTALLED} == true ]]; then
       echo " - BrewFlasher Command Line Edition: Installed"
@@ -749,7 +749,7 @@ installation_summary() {
       echo " - BrewFlasher Command Line Edition: Installation FAILED"
     fi
   fi
-  
+
   if [[ ${INSTALL_TILTBRIDGE} -eq 1 ]]; then
     if [[ ${TILTBRIDGE_INSTALLED} == true ]]; then
       echo " - TiltBridge Junior: Installed"
@@ -758,7 +758,7 @@ installation_summary() {
       echo " - TiltBridge Junior: Installation FAILED"
     fi
   fi
-  
+
   echo
   printinfo "Installation Complete. Happy Brewing!"
 }
@@ -766,35 +766,35 @@ installation_summary() {
 # Check for updates to the repository
 check_for_updates() {
   printinfo "Checking for script updates..."
-  
+
   # Check if we're in a git repository
   if ! git rev-parse --is-inside-work-tree &> /dev/null; then
     printwarn "Not running from a git repository, skipping update check."
     return 0
   fi
-  
+
   # Store the current branch
   local current_branch
   current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
-  
+
   # Fetch the latest changes without merging
   if ! git fetch origin "${current_branch}" &> /dev/null; then
     printwarn "Failed to fetch updates, continuing with current version."
     return 0
   fi
-  
+
   # Check if there are changes to pull
   local changes
   changes=$(git log HEAD..origin/"${current_branch}" --oneline 2>/dev/null)
-  
+
   if [ -n "${changes}" ]; then
     printinfo "Updates are available. The script will now update itself."
-    
+
     # Show the available changes
     echo "The following updates will be applied:"
     git log --oneline HEAD..origin/"${current_branch}" | sed 's/^/  /'
     echo
-    
+
     # Pull the changes
     if git pull origin "${current_branch}" &> /dev/null; then
       printinfo "The script has been updated successfully."
@@ -811,13 +811,13 @@ check_for_updates() {
 # Main execution flow
 main() {
   printinfo "Starting ${PACKAGE_NAME}..."
-  
+
   verifyInternetConnection
   check_for_updates
   verifyFreeDiskSpace
   get_user_selections
   install_dependencies
-  
+
   if [[ ${INSTALL_SERIAL} -eq 1 ]]; then
     if install_serial_to_fermentrack; then
       SERIAL_INSTALLED=true
@@ -825,7 +825,7 @@ main() {
       printwarn "Serial to Fermentrack installation failed."
     fi
   fi
-  
+
   if [[ ${INSTALL_BREWFLASHER} -eq 1 ]]; then
     if install_brewflasher; then
       BREWFLASHER_INSTALLED=true
@@ -833,7 +833,7 @@ main() {
       printwarn "BrewFlasher installation failed."
     fi
   fi
-  
+
   if [[ ${INSTALL_TILTBRIDGE} -eq 1 ]]; then
     if install_tiltbridge_junior; then
       TILTBRIDGE_INSTALLED=true
@@ -841,7 +841,7 @@ main() {
       printwarn "TiltBridge Junior installation failed."
     fi
   fi
-  
+
   installation_summary
 }
 
