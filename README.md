@@ -27,7 +27,7 @@ The installer supports installing these tools:
 Run this command to download and execute the installer automatically, over the internet:
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/thorrak/ft2_tools/refs/heads/main/bootstrap.sh)
+bash <(curl -sSL https://localtools.fermentrack.net/)
 ```
 
 ### Manual Install
