@@ -19,6 +19,7 @@ INTERACTIVE=1
 INSTALL_SERIAL=0
 INSTALL_BREWFLASHER=0
 INSTALL_TILTBRIDGE=0
+UPGRADE_MODE=0
 INSTALL_LOG="./install.log"
 
 # URLs for installation packages
@@ -27,15 +28,26 @@ MIN_PYTHON_VERSION="3.8.0"
 
 # Help text
 function usage() {
-    echo "Usage: $0 [-h] [-n] [-s] [-b] [-t]" 1>&2
+    echo "Usage: $0 [-h] [-n] [-s] [-b] [-t] [--upgrade]" 1>&2
     echo "Options:"
     echo "  -h                This help"
     echo "  -n                Run non-interactive installation"
     echo "  -s                Install Serial to Fermentrack"
     echo "  -b                Install BrewFlasher Command Line Edition"
     echo "  -t                Install TiltBridge Junior"
+    echo "  --upgrade         Upgrade mode - automatically detect and update installed components"
     exit 1
 }
+
+# Handle long options
+for arg in "$@"; do
+  case "$arg" in
+    --upgrade)
+      UPGRADE_MODE=1
+      shift
+      ;;
+  esac
+done
 
 while getopts "nhsbt" opt; do
   case ${opt} in
@@ -314,7 +326,7 @@ install_serial_to_fermentrack() {
   printinfo "Installing Serial to Fermentrack wheel file into virtualenv..."
 
   # Install using uv
-  if ! uv pip install --python "${venv_dir}/bin/python" "$tmp_dir/$wheel_filename" >> "${INSTALL_LOG}" 2>&1; then
+  if ! uv pip install "$tmp_dir/$wheel_filename" >> "${INSTALL_LOG}" 2>&1; then
     printerror "Failed to install with uv. Installation cannot continue."
     rm -rf "$tmp_dir"
     return 1
@@ -361,8 +373,20 @@ EOF
   # Create logs directory
   mkdir -p "${myPath}/logs"
 
-  # Ask user if they want to run the daemon automatically
-  if [[ ${INTERACTIVE} -eq 1 ]]; then
+  # Determine autostart preference
+  if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+    # In upgrade mode, check if supervisor config exists
+    SUPERVISOR_CONFIG_DIR="/etc/supervisor/conf.d"
+    ALT_SUPERVISOR_CONFIG_DIR="/etc/supervisord.d"
+    
+    if [[ -f "$SUPERVISOR_CONFIG_DIR/serial_to_fermentrack.conf" || -f "$ALT_SUPERVISOR_CONFIG_DIR/serial_to_fermentrack.conf" ]]; then
+      printinfo "Existing supervisor configuration detected, will keep daemon autostarting"
+      AUTO_START=1
+    else
+      AUTO_START=0
+    fi
+  # Ask user if not in upgrade mode
+  elif [[ ${INTERACTIVE} -eq 1 ]]; then
     echo
     read -p "Do you want serial_to_fermentrack to run automatically at startup? [Y/n]: " AUTO_START_CHOICE
     case "${AUTO_START_CHOICE}" in
@@ -482,10 +506,19 @@ EOF
   chmod +x "${myPath}/brewflasher"
 
 
-  # Ask user if they want to run the daemon automatically
-  if [[ ${INTERACTIVE} -eq 1 ]]; then
+  # Determine if we should install avrdude
+  if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+    # In upgrade mode, never install avrdude. If it's installed via apt, the the user should upgrade via apt
+    INSTALL_AVRDUDE=0
+    if command -v avrdude &> /dev/null; then
+      printinfo "avrdude is already installed - to upgrade use `apt-get upgrade`"
+    else
+      # If not installed but we're in upgrade mode, skip it
+      printinfo "avrdude is not installed. To install, re-run this script without the upgrade flag"
+    fi
+  elif [[ ${INTERACTIVE} -eq 1 ]]; then
     echo
-    read -p "Do you want to install 'avrdude' to  flashing Arduinos? [Y/n]: " AVRDUDE_CHOICE
+    read -p "Do you want to install 'avrdude' to allow flashing Arduinos? [Y/n]: " AVRDUDE_CHOICE
     case "${AVRDUDE_CHOICE}" in
       n | N | no | NO | No )
         INSTALL_AVRDUDE=0
@@ -499,7 +532,7 @@ EOF
     INSTALL_AVRDUDE=1
   fi
 
-  # Set up supervisor configuration if requested
+  # Install avrdude if requested
   if [[ ${INSTALL_AVRDUDE} -eq 1 ]]; then
     printinfo "Installing avrdude from apt..."
     sudo apt-get install -y avrdude >> "${INSTALL_LOG}" 2>&1 || printwarn "Failed to install avrdude - Arduino flashing may not work"
@@ -666,8 +699,51 @@ EOF
   return 0
 }
 
+# Check for existing installations for upgrade mode
+check_existing_installations() {
+  printinfo "Checking for existing installations..."
+  
+  # Check for Serial to Fermentrack
+  if [[ -f "${myPath}/serial_to_fermentrack" ]]; then
+    printinfo "Found existing Serial to Fermentrack installation"
+    INSTALL_SERIAL=1
+  fi
+  
+  # Check for BrewFlasher
+  if [[ -f "${myPath}/brewflasher" ]]; then
+    printinfo "Found existing BrewFlasher installation"
+    INSTALL_BREWFLASHER=1
+  fi
+  
+  # Check for TiltBridge Junior (simple check for the directory)
+  if [[ -d "${HOME}/fermentrack_tools/tiltbridge_junior" ]]; then
+    printinfo "Found existing TiltBridge Junior installation"
+    INSTALL_TILTBRIDGE=1
+  fi
+  
+  # Check if at least one component was found
+  if [[ ${INSTALL_SERIAL} -eq 0 && ${INSTALL_BREWFLASHER} -eq 0 && ${INSTALL_TILTBRIDGE} -eq 0 ]]; then
+    printwarn "No existing installations detected for upgrade"
+    return 1
+  fi
+  
+  return 0
+}
+
 # Interactive selection menu
 get_user_selections() {
+  # If in upgrade mode, detect existing installations
+  if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+    if ! check_existing_installations; then
+      # If no installations found, revert to normal mode
+      printwarn "Reverting to normal installation mode"
+      UPGRADE_MODE=0
+    else
+      # In upgrade mode with installations detected, we can skip further prompts
+      return 0
+    fi
+  fi
+  
   if [[ ${INTERACTIVE} -eq 1 ]]; then
     # No command line options were provided, ask user for selections
     if [[ ${INSTALL_SERIAL} -eq 0 && ${INSTALL_BREWFLASHER} -eq 0 && ${INSTALL_TILTBRIDGE} -eq 0 ]]; then
@@ -730,37 +806,69 @@ TILTBRIDGE_INSTALLED=false
 # Installation summary
 installation_summary() {
   echo
-  printinfo "Installation summary:"
+  if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+    printinfo "Upgrade summary:"
+  else
+    printinfo "Installation summary:"
+  fi
   echo
   if [[ ${INSTALL_SERIAL} -eq 1 ]]; then
     if [[ ${SERIAL_INSTALLED} == true ]]; then
-      echo " - Serial to Fermentrack: Installed"
+      if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+        echo " - Serial to Fermentrack: Upgraded"
+      else
+        echo " - Serial to Fermentrack: Installed"
+      fi
       echo "   Run with: serial_to_fermentrack_config"
     else
-      echo " - Serial to Fermentrack: Installation FAILED"
+      if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+        echo " - Serial to Fermentrack: Upgrade FAILED"
+      else
+        echo " - Serial to Fermentrack: Installation FAILED"
+      fi
     fi
   fi
 
   if [[ ${INSTALL_BREWFLASHER} -eq 1 ]]; then
     if [[ ${BREWFLASHER_INSTALLED} == true ]]; then
-      echo " - BrewFlasher Command Line Edition: Installed"
+      if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+        echo " - BrewFlasher Command Line Edition: Upgraded"
+      else
+        echo " - BrewFlasher Command Line Edition: Installed"
+      fi
       echo "   Run with: brewflasher"
     else
-      echo " - BrewFlasher Command Line Edition: Installation FAILED"
+      if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+        echo " - BrewFlasher Command Line Edition: Upgrade FAILED"
+      else
+        echo " - BrewFlasher Command Line Edition: Installation FAILED"
+      fi
     fi
   fi
 
   if [[ ${INSTALL_TILTBRIDGE} -eq 1 ]]; then
     if [[ ${TILTBRIDGE_INSTALLED} == true ]]; then
-      echo " - TiltBridge Junior: Installed"
+      if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+        echo " - TiltBridge Junior: Upgraded"
+      else
+        echo " - TiltBridge Junior: Installed"
+      fi
       echo "   Run with: ~/fermentrack_tools/tiltbridge_junior/run.sh"
     else
-      echo " - TiltBridge Junior: Installation FAILED"
+      if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+        echo " - TiltBridge Junior: Upgrade FAILED"
+      else
+        echo " - TiltBridge Junior: Installation FAILED"
+      fi
     fi
   fi
 
   echo
-  printinfo "Installation Complete. Happy Brewing!"
+  if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+    printinfo "Upgrade Complete. Happy Brewing!"
+  else
+    printinfo "Installation Complete. Happy Brewing!"
+  fi
 }
 
 # Check for updates to the repository
@@ -811,6 +919,10 @@ check_for_updates() {
 # Main execution flow
 main() {
   printinfo "Starting ${PACKAGE_NAME}..."
+  
+  if [[ ${UPGRADE_MODE} -eq 1 ]]; then
+    printinfo "Running in upgrade mode - will auto-detect and upgrade installed components"
+  fi
 
   verifyInternetConnection
   check_for_updates
