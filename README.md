@@ -37,6 +37,16 @@ If you've already downloaded this repository:
 1. Make the installer executable (if it isn't already): `chmod +x ft2_tools_installer.sh`
 2. Run the installer: `./ft2_tools_installer.sh`
 
+### Upgrading
+
+To upgrade existing installations:
+
+```bash
+./upgrade.sh
+```
+
+This will automatically detect which tools are installed and upgrade them to the latest versions.
+
 
 ## Using the Tools
 
@@ -64,11 +74,29 @@ After installation:
 
 Instructions to come at a later date, when Fermentrack 2 gravity support is available for use.
 
+## Uninstallation
+
+If you need to uninstall any of the tools:
+
+1. Make the uninstaller executable (if it isn't already): `chmod +x uninstall.sh`
+2. Run the uninstaller: `./uninstall.sh`
+3. Follow the prompts to select which tools to uninstall
+
+You can also run in non-interactive mode:
+```bash
+# Uninstall specific tools
+./uninstall.sh -s -b    # Uninstall Serial-to-Fermentrack and BrewFlasher
+./uninstall.sh -t       # Uninstall TiltBridge Junior
+./uninstall.sh -n -s -b -t  # Uninstall all tools non-interactively
+```
+
 
 ## Repository Structure
 
 - `bootstrap.sh`: Script designed to be run directly from the internet to download this repository and run the installer
 - `ft2_tools_installer.sh`: Main installation script that installs all local tools
+- `uninstall.sh`: Script to uninstall tools previously installed by ft2_tools_installer.sh
+- `upgrade.sh`: Script to upgrade previously installed tools to their latest versions
 
 ### Created Executables
 
@@ -76,3 +104,18 @@ Instructions to come at a later date, when Fermentrack 2 gravity support is avai
 - `serial_to_fermentrack`: The actual serial-to-Fermentrack bridge, run once per device by the daemon (Not typically run directly by a user)
 - `serial_to_fermentrack_daemon`: Daemon that runs the serial-to-Fermentrack bridge (Not typically run directly by a user)
 - `brewflasher`: BrewFlasher CLI Edition, used to flash ESP8266, ESP32, and Arduino devices
+
+## Development and Testing
+
+This repository includes a comprehensive test suite using [ShellSpec](https://shellspec.info/). See the `spec` directory for test files and documentation:
+
+```bash
+# Install ShellSpec
+curl -fsSL https://git.io/shellspec | sh -s -- --yes
+
+# Run all tests
+shellspec
+
+# Run specific test files
+shellspec spec/installer_spec.sh
+```
