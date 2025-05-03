@@ -334,6 +334,87 @@ uninstall_tiltbridge_junior() {
   return 0
 }
 
+# Check if supervisor is no longer needed
+check_supervisor() {
+  if [[ ${INTERACTIVE} -eq 0 ]]; then
+    # Don't offer to uninstall supervisor in non-interactive mode
+    return 0
+  fi
+  
+  # Define supervisor config directories
+  SUPERVISOR_CONFIG_DIR="/etc/supervisor/conf.d"
+  ALT_SUPERVISOR_CONFIG_DIR="/etc/supervisord.d"
+  
+  # Check if either directory exists
+  if [[ -d "$SUPERVISOR_CONFIG_DIR" ]]; then
+    # Count the number of configuration files in the directory
+    local config_count=$(find "$SUPERVISOR_CONFIG_DIR" -type f -name "*.conf" | wc -l)
+    
+    if [[ ${config_count} -eq 0 ]]; then
+      echo
+      printinfo "No supervisor configurations remain in $SUPERVISOR_CONFIG_DIR"
+      read -p "Would you like to uninstall supervisor? [y/N]: " UNINSTALL_SUPERVISOR_CHOICE
+      case "${UNINSTALL_SUPERVISOR_CHOICE}" in
+        y | Y | yes | YES | Yes )
+          printinfo "Uninstalling supervisor..."
+          if [ -f /etc/debian_version ]; then
+            # Debian/Ubuntu based systems
+            sudo apt-get remove -y supervisor >> "${UNINSTALL_LOG}" 2>&1 || printwarn "Failed to uninstall supervisor"
+            printinfo "Supervisor has been removed."
+          elif [ -f /etc/redhat-release ]; then
+            # RHEL/CentOS/Fedora (supervisor was installed via pip)
+            sudo pip3 uninstall -y supervisor >> "${UNINSTALL_LOG}" 2>&1 || printwarn "Failed to uninstall supervisor"
+            printinfo "Supervisor has been removed."
+          elif command -v brew &>/dev/null; then
+            # macOS with Homebrew
+            pip3 uninstall -y supervisor >> "${UNINSTALL_LOG}" 2>&1 || printwarn "Failed to uninstall supervisor"
+            printinfo "Supervisor has been removed."
+          else
+            printwarn "Unsupported system, unable to determine how to uninstall supervisor"
+            printwarn "You may need to manually uninstall supervisor"
+          fi
+          ;;
+        * )
+          printinfo "Keeping supervisor installed."
+          ;;
+      esac
+    fi
+  elif [[ -d "$ALT_SUPERVISOR_CONFIG_DIR" ]]; then
+    # Count the number of configuration files in the directory
+    local config_count=$(find "$ALT_SUPERVISOR_CONFIG_DIR" -type f -name "*.conf" | wc -l)
+    
+    if [[ ${config_count} -eq 0 ]]; then
+      echo
+      printinfo "No supervisor configurations remain in $ALT_SUPERVISOR_CONFIG_DIR"
+      read -p "Would you like to uninstall supervisor? [y/N]: " UNINSTALL_SUPERVISOR_CHOICE
+      case "${UNINSTALL_SUPERVISOR_CHOICE}" in
+        y | Y | yes | YES | Yes )
+          printinfo "Uninstalling supervisor..."
+          if [ -f /etc/debian_version ]; then
+            # Debian/Ubuntu based systems
+            sudo apt-get remove -y supervisor >> "${UNINSTALL_LOG}" 2>&1 || printwarn "Failed to uninstall supervisor"
+            printinfo "Supervisor has been removed."
+          elif [ -f /etc/redhat-release ]; then
+            # RHEL/CentOS/Fedora (supervisor was installed via pip)
+            sudo pip3 uninstall -y supervisor >> "${UNINSTALL_LOG}" 2>&1 || printwarn "Failed to uninstall supervisor"
+            printinfo "Supervisor has been removed."
+          elif command -v brew &>/dev/null; then
+            # macOS with Homebrew
+            pip3 uninstall -y supervisor >> "${UNINSTALL_LOG}" 2>&1 || printwarn "Failed to uninstall supervisor"
+            printinfo "Supervisor has been removed."
+          else
+            printwarn "Unsupported system, unable to determine how to uninstall supervisor"
+            printwarn "You may need to manually uninstall supervisor"
+          fi
+          ;;
+        * )
+          printinfo "Keeping supervisor installed."
+          ;;
+      esac
+    fi
+  fi
+}
+
 # Clean up shared virtual environment if empty
 cleanup_virtualenv() {
   # Only attempt cleanup if no tools remain installed
@@ -429,6 +510,9 @@ main() {
   
   # Clean up shared resources
   cleanup_virtualenv
+  
+  # Check if supervisor should be uninstalled
+  check_supervisor
   
   # Remove logs directory if empty
   if [[ -d "${myPath}/logs" ]]; then
