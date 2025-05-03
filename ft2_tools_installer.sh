@@ -153,19 +153,77 @@ verifyFreeDiskSpace() {
   printinfo "Verifying free disk space..."
   local required_free_gigabytes=1
   local required_free_kilobytes=$(( required_free_gigabytes*1024000 ))
-  local existing_free_kilobytes=$(df -Pk | grep -m1 '/' | awk '{print $4}')
+  
+  # Improved method: look specifically for the root filesystem (typically mounted on /)
+  # Filter for lines where the mount point is exactly "/" (not /dev, /run, etc.)
+  local existing_free_kilobytes=$(df -Pk | awk '$6 == "/" {print $4}')
+  
+  # If root filesystem wasn't found, try a more general approach
+  if [[ -z "${existing_free_kilobytes}" ]]; then
+    # Look for filesystems mounted at / or containing /home, prioritizing the root filesystem
+    existing_free_kilobytes=$(df -Pk | awk '$6 ~ /^\/$/ {print $4; exit}')
+    if [[ -z "${existing_free_kilobytes}" ]]; then
+      existing_free_kilobytes=$(df -Pk | awk '$6 ~ /\/home/ {print $4; exit}')
+    fi
+    
+    # Last resort: check the filesystem containing the current directory
+    if [[ -z "${existing_free_kilobytes}" ]]; then
+      local current_dir
+      current_dir=$(pwd)
+      existing_free_kilobytes=$(df -Pk "${current_dir}" | awk 'NR==2 {print $4}')
+    fi
+  fi
 
   # - Unknown free disk space, not a integer
   if ! [[ "${existing_free_kilobytes}" =~ ^([0-9])+$ ]]; then
     printwarn "Unknown free disk space!"
-    die "We were unable to determine available free disk space on this system."
+    
+    # In interactive mode, allow user to continue anyway
+    if [[ ${INTERACTIVE} -eq 1 ]]; then
+      echo
+      read -p "Continue anyway? [y/N]: " CONTINUE_CHOICE
+      case "${CONTINUE_CHOICE}" in
+        y | Y | yes | YES | Yes )
+          printwarn "Continuing installation despite unknown free disk space..."
+          return 0
+          ;;
+        * )
+          die "Installation cancelled due to unknown free disk space."
+          ;;
+      esac
+    else
+      die "We were unable to determine available free disk space on this system."
+    fi
   # - Insufficient free disk space
   elif [[ ${existing_free_kilobytes} -lt ${required_free_kilobytes} ]]; then
+    local existing_free_mb=$(( existing_free_kilobytes / 1024 ))
+    local required_free_mb=$(( required_free_kilobytes / 1024 ))
+    
     printwarn "Insufficient Disk Space!"
     printinfo "Your system appears to be low on disk space. ${PACKAGE_NAME} recommends a minimum of $required_free_gigabytes GB."
-    die "Insufficient free space, exiting..."
+    printinfo "Current free space: ${existing_free_mb} MB (need ${required_free_mb} MB)"
+    
+    # In interactive mode, allow user to continue anyway
+    if [[ ${INTERACTIVE} -eq 1 ]]; then
+      echo
+      read -p "Continue anyway? [y/N]: " CONTINUE_CHOICE
+      case "${CONTINUE_CHOICE}" in
+        y | Y | yes | YES | Yes )
+          printwarn "Continuing installation despite insufficient disk space..."
+          return 0
+          ;;
+        * )
+          die "Installation cancelled due to insufficient disk space."
+          ;;
+      esac
+    else
+      die "Insufficient free space, exiting..."
+    fi
   fi
-  printinfo "Sufficient free disk space is available"
+  
+  # Convert to MB for more readable output
+  local existing_free_mb=$(( existing_free_kilobytes / 1024 ))
+  printinfo "Sufficient free disk space is available (${existing_free_mb} MB free)"
 }
 
 # Install system dependencies
