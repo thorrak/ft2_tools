@@ -466,11 +466,11 @@ EOF
 
   echo
   echo "Serial to Fermentrack is now installed, but still requires configuration."
-  echo "To configure Serial to Fermentrack, run '${myPath}/serial_to_fermentrack_config'"
+  echo "To configure, run '${myPath}/serial_to_fermentrack_config'"
   echo
 
   if [[ ${AUTO_START} -eq 1 ]]; then
-    echo "Serial to Fermentrack daemon is configured to start automatically using supervisor."
+    echo "Serial to Fermentrack daemon will automatically using supervisor."
     echo "Logs are available at: ${myPath}/logs/"
     echo
   else
