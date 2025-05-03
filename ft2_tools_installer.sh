@@ -772,15 +772,15 @@ get_user_selections() {
           ;;
       esac
 
-      read -p "Install TiltBridge Junior? [y/N]: " TILTBRIDGE_CHOICE
-      case "${TILTBRIDGE_CHOICE}" in
-        y | Y | yes | YES | Yes )
-          INSTALL_TILTBRIDGE=1
-          ;;
-        * )
-          INSTALL_TILTBRIDGE=0
-          ;;
-      esac
+#      read -p "Install TiltBridge Junior? [y/N]: " TILTBRIDGE_CHOICE
+#      case "${TILTBRIDGE_CHOICE}" in
+#        y | Y | yes | YES | Yes )
+#          INSTALL_TILTBRIDGE=1
+#          ;;
+#        * )
+#          INSTALL_TILTBRIDGE=0
+#          ;;
+#      esac
 
       # Check if at least one application was selected
       if [[ ${INSTALL_SERIAL} -eq 0 && ${INSTALL_BREWFLASHER} -eq 0 && ${INSTALL_TILTBRIDGE} -eq 0 ]]; then
@@ -946,13 +946,13 @@ main() {
     fi
   fi
 
-  if [[ ${INSTALL_TILTBRIDGE} -eq 1 ]]; then
-    if install_tiltbridge_junior; then
-      TILTBRIDGE_INSTALLED=true
-    else
-      printwarn "TiltBridge Junior installation failed."
-    fi
-  fi
+#  if [[ ${INSTALL_TILTBRIDGE} -eq 1 ]]; then
+#    if install_tiltbridge_junior; then
+#      TILTBRIDGE_INSTALLED=true
+#    else
+#      printwarn "TiltBridge Junior installation failed."
+#    fi
+#  fi
 
   installation_summary
 }
