@@ -24,7 +24,7 @@ INSTALL_LOG="./install.log"
 
 # URLs for installation packages
 SERIAL_TO_FERMENTRACK_WHEEL_URL="https://github.com/thorrak/serial_to_fermentrack/releases/download/v0.0.1-alpha1/serial_to_fermentrack-0.0.1-py3-none-any.whl"
-MIN_PYTHON_VERSION="3.8.0"
+MIN_PYTHON_VERSION="3.9.0"
 
 # Help text
 function usage() {
