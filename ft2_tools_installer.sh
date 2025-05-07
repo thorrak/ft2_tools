@@ -21,6 +21,7 @@ INSTALL_BREWFLASHER=0
 INSTALL_TILTBRIDGE=0
 UPGRADE_MODE=0
 INSTALL_LOG="./install.log"
+USE_CUSTOM_WHEELS=0
 
 # URLs for installation packages
 SERIAL_TO_FERMENTRACK_WHEEL_URL="https://github.com/thorrak/serial_to_fermentrack/releases/download/v0.0.1-alpha1/serial_to_fermentrack-0.0.1-py3-none-any.whl"
@@ -383,13 +384,25 @@ install_serial_to_fermentrack() {
   # Install the wheel file
   printinfo "Installing Serial to Fermentrack wheel file into virtualenv..."
 
-  # Install using uv
-  if ! uv pip install "$tmp_dir/$wheel_filename" >> "${INSTALL_LOG}" 2>&1; then
-    printerror "Failed to install with uv. Installation cannot continue."
-    rm -rf "$tmp_dir"
-    return 1
+  # Install using uv, with custom wheel index if requested
+  if [[ ${USE_CUSTOM_WHEELS} -eq 1 ]]; then
+    printinfo "Using custom Fermentrack wheels index to speed up installation..."
+    if ! uv pip install --index fermentrack="https://wheels.fermentrack.com/simple" --index-strategy unsafe-best-match "$tmp_dir/$wheel_filename" >> "${INSTALL_LOG}" 2>&1; then
+      printerror "Failed to install with uv and custom wheels. Installation cannot continue."
+      rm -rf "$tmp_dir"
+      return 1
+    else
+      printinfo "Serial to Fermentrack installed successfully with uv using custom wheels."
+    fi
   else
-    printinfo "Serial to Fermentrack installed successfully with uv."
+    # Standard installation
+    if ! uv pip install "$tmp_dir/$wheel_filename" >> "${INSTALL_LOG}" 2>&1; then
+      printerror "Failed to install with uv. Installation cannot continue."
+      rm -rf "$tmp_dir"
+      return 1
+    else
+      printinfo "Serial to Fermentrack installed successfully with uv."
+    fi
   fi
 
   # Create wrapper scripts for easy execution
@@ -545,11 +558,20 @@ install_brewflasher() {
 
   create_uv_venv
 
-  # Install brewflasher_cli from pypi into the virtualenv
-  if ! uv pip install --upgrade brewflasher_cli >> "${INSTALL_LOG}" 2>&1; then
-    # If uv failed, return error - we require uv
-    printerror "Failed to install BrewFlasher CLI from PyPi. Installation cannot continue."
-    return 1
+  # Install brewflasher_cli from pypi into the virtualenv, with custom wheel index if requested
+  if [[ ${USE_CUSTOM_WHEELS} -eq 1 ]]; then
+    printinfo "Using custom Fermentrack wheels index to speed up installation..."
+    if ! uv pip install --index fermentrack="https://wheels.fermentrack.com/simple" --index-strategy unsafe-best-match --upgrade brewflasher_cli >> "${INSTALL_LOG}" 2>&1; then
+      printerror "Failed to install BrewFlasher CLI from PyPi with custom wheels. Installation cannot continue."
+      return 1
+    fi
+  else
+    # Standard installation
+    if ! uv pip install --upgrade brewflasher_cli >> "${INSTALL_LOG}" 2>&1; then
+      # If uv failed, return error - we require uv
+      printerror "Failed to install BrewFlasher CLI from PyPi. Installation cannot continue."
+      return 1
+    fi
   fi
 
   # BrewFlasher CLI wrapper script
@@ -737,10 +759,19 @@ install_tiltbridge_junior() {
     return 1
   }
 
-  # Install Python dependencies
-  cd ~/fermentrack_tools/tiltbridge_junior/app && pip3 install -r requirements.txt >> "${INSTALL_LOG}" 2>&1 || {
-    printerror "Failed to install TiltBridge Junior dependencies"
-    return 1
+  # Install Python dependencies, with custom wheel index if requested
+  if [[ ${USE_CUSTOM_WHEELS} -eq 1 ]]; then
+    printinfo "Using custom Fermentrack wheels index to speed up installation..."
+    cd ~/fermentrack_tools/tiltbridge_junior/app && pip3 install --index-url https://wheels.fermentrack.com/simple --trusted-host wheels.fermentrack.com -r requirements.txt >> "${INSTALL_LOG}" 2>&1 || {
+      printerror "Failed to install TiltBridge Junior dependencies with custom wheels"
+      return 1
+    }
+  else
+    # Standard installation
+    cd ~/fermentrack_tools/tiltbridge_junior/app && pip3 install -r requirements.txt >> "${INSTALL_LOG}" 2>&1 || {
+      printerror "Failed to install TiltBridge Junior dependencies"
+      return 1
+    }
   }
 
   # Create starter script
@@ -974,6 +1005,51 @@ check_for_updates() {
   fi
 }
 
+# Check if running on armv6l hardware (Pi Zero, Original Pi)
+check_armv6l() {
+  if uname -a | grep -q 'armv6l'; then
+    printinfo "Detected armv6l hardware (Raspberry Pi Zero, Zero W, or Original Pi)"
+    
+    if [[ ${INTERACTIVE} -eq 1 ]]; then
+      echo
+      printinfo "This device is running on an armv6l processor (Pi Zero, Zero W, or Original Pi)."
+      echo
+      read -p "Use custom Fermentrack Python wheels to speed up installation significantly? [Y/n]: " WHEELS_CHOICE
+      case "${WHEELS_CHOICE}" in
+        n | N | no | NO | No )
+          USE_CUSTOM_WHEELS=0
+          printwarn "Installation may require manual installation of rust/cargo"
+          printwarn "and could potentially take 24+ hours to build wheels. Seriously - it is REALLY REALLY slow."
+          echo
+          read -p "Are you sure you don't want to use custom wheels? [y/N]: " WHEELS_CONFIRM
+          case "${WHEELS_CONFIRM}" in
+            y | Y | yes | YES | Yes )
+              USE_CUSTOM_WHEELS=0
+              ;;
+            * )
+              USE_CUSTOM_WHEELS=1
+              printinfo "Using custom wheels for faster installation."
+              ;;
+          esac
+          ;;
+        * )
+          USE_CUSTOM_WHEELS=1
+          printinfo "Using custom wheels for faster installation."
+          ;;
+      esac
+    else
+      # Non-interactive mode, default to using custom wheels
+      USE_CUSTOM_WHEELS=1
+      printinfo "Detected armv6l hardware. Using custom wheels for faster installation."
+    fi
+    return 0
+  fi
+  
+  # Not armv6l hardware
+  USE_CUSTOM_WHEELS=0
+  return 1
+}
+
 # Main execution flow
 main() {
   printinfo "Starting ${PACKAGE_NAME}..."
@@ -985,6 +1061,7 @@ main() {
   verifyInternetConnection
   check_for_updates
   verifyFreeDiskSpace
+  check_armv6l  # Check for armv6l hardware
   get_user_selections
   install_dependencies
 
