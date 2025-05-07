@@ -772,7 +772,7 @@ install_tiltbridge_junior() {
       printerror "Failed to install TiltBridge Junior dependencies"
       return 1
     }
-  }
+  fi
 
   # Create starter script
   cat > ~/fermentrack_tools/tiltbridge_junior/run.sh << 'EOF'
