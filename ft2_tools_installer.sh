@@ -1018,8 +1018,7 @@ check_armv6l() {
       case "${WHEELS_CHOICE}" in
         n | N | no | NO | No )
           USE_CUSTOM_WHEELS=0
-          printwarn "Installation may require manual installation of rust/cargo"
-          printwarn "and could potentially take 24+ hours to build wheels. Seriously - it is REALLY REALLY slow."
+          printwarn "Installation may require manual installation of rust/cargo and could potentially take 24+ hours to build wheels. Seriously - it is REALLY REALLY slow."
           echo
           read -p "Are you sure you don't want to use custom wheels? [y/N]: " WHEELS_CONFIRM
           case "${WHEELS_CONFIRM}" in
