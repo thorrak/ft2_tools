@@ -24,7 +24,7 @@ INSTALL_LOG="./install.log"
 USE_CUSTOM_WHEELS=0
 
 # URLs for installation packages
-SERIAL_TO_FERMENTRACK_WHEEL_URL="https://github.com/thorrak/serial_to_fermentrack/releases/download/v0.0.3/serial_to_fermentrack-0.0.3-py3-none-any.whl"
+SERIAL_TO_FERMENTRACK_WHEEL_URL="https://github.com/thorrak/serial_to_fermentrack/releases/download/v0.0.4/serial_to_fermentrack-0.0.4-py3-none-any.whl"
 MIN_PYTHON_VERSION="3.9.0"
 
 # Help text
@@ -995,7 +995,7 @@ check_for_updates() {
     # Pull the changes
     if git pull origin "${current_branch}" &> /dev/null; then
       printinfo "The script has been updated successfully."
-      printinfo "Please restart the installer to use the updated version."
+      printerror "Please restart the installer to use the updated version."
       exit 0
     else
       printwarn "Failed to update the script. Continuing with current version."
