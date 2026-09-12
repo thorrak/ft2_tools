@@ -414,6 +414,7 @@ install_serial_to_fermentrack() {
 # Wrapper script for Serial to Fermentrack
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 source "\${SCRIPT_DIR}/.venv/bin/activate"
+cd "\${SCRIPT_DIR}"  # config and logs resolve against the working directory
 serial_to_fermentrack "\$@"
 EOF
 
@@ -425,6 +426,7 @@ EOF
 # Wrapper script for Serial to Fermentrack Config
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 source "\${SCRIPT_DIR}/.venv/bin/activate"
+cd "\${SCRIPT_DIR}"  # config and logs resolve against the working directory
 serial_to_fermentrack_config "\$@"
 EOF
 
@@ -436,6 +438,7 @@ EOF
 # Wrapper script for Serial to Fermentrack Daemon
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 source "\${SCRIPT_DIR}/.venv/bin/activate"
+cd "\${SCRIPT_DIR}"  # config and logs resolve against the working directory
 serial_to_fermentrack_daemon "\$@"
 EOF
 
